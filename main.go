@@ -96,14 +96,14 @@ func isInList(str string, list []string) bool {
 	return false
 }
 
-func sendMsg(message string, peer int64, client *vk.Client) error {
+func sendMsg(message string, peer int64, client *vk.Client) {
 	rand.Seed(time.Now().UnixNano())
 	err := client.CallMethod("messages.send", vk.RequestParams{
 		"peer_id":   peer,
 		"message":   message,
 		"random_id": rand.Int63(),
 	}, nil)
-	return err
+	checkerr(err)
 }
 
 func main() {
@@ -226,7 +226,7 @@ func main() {
 					sendMsg("Да блин нафиг, вы вобмата забыли завести!!!!!!!", peer, client)
 				}
 			} else if isInList(txt, []string{"помощь", "хелп", "help", "команды"}) {
-				sendMsg("vk.com/@wombat_bot-help", peer, client)
+				sendMsg("https://vk.com/@wombat_bot-help", peer, client)
 			} else if isInList(txt, []string{"купить здоровье", "прокачка здоровья", "прокачать здоровье"}) {
 				if isInUsers {
 					if womb.Money >= 5 {
