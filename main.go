@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,20 +14,35 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
+// Config нужен для токена и мб настроек
 type Config struct {
 	Token string `json:"token"`
 }
 
-type User struct {
-	Name     string `json:"name"`
-	XP       uint32 `json:"xp"`
-	Health   uint32 `json:"health"`
-	Force    uint32 `json:"force"`
-	Money    uint64 `json:"money"`
-	LastTime string `json:"last_time"` //when was last reward got
+// Title — описание титула
+type Title struct {
+	Name string `json:"name"`
+	Desc string `json:"desc"`
 }
 
-var users map[int64]User = map[int64]User{}
+// User — описание пользователя
+type User struct { // параметры юзера
+	Name   string           `json:"name"`
+	XP     uint32           `json:"xp"`
+	Health uint32           `json:"health"`
+	Force  uint32           `json:"force"`
+	Money  uint64           `json:"money"`
+	Titles map[uint16]Title `json:"titles"`
+}
+
+var users = map[int64]User{}
+
+var titles = map[uint16]Title{
+	0: Title{
+		Name: "Вомботестер",
+		Desc: "Тестирует вомбота; даёт право пользоваться devtools",
+	},
+}
 
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов"}
 
@@ -136,10 +152,35 @@ func main() {
 						Health: 5,
 						Force:  2,
 						Money:  10,
+						Titles: map[uint16]Title{},
 					}
 					womb = users[peer]
 					saveUsers()
 					sendMsg(fmt.Sprintf("Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты", womb.Name), peer, client)
+				}
+			} else if strings.HasPrefix(strings.ToLower(txt), "devtools") {
+				if _, ok := womb.Titles[0]; ok {
+					cmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "devtools "))
+					if strings.HasPrefix(cmd, "set money") {
+						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money "))
+						if _, err := strconv.ParseInt(strNewMoney, 10, 64); err == nil {
+							i, err := strconv.Atoi(strNewMoney)
+							checkerr(err)
+							womb.Money = uint64(i)
+							users[peer] = womb
+							saveUsers()
+							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей на счету: %d", womb.Money), peer, client)
+						} else {
+							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools set money {кол-во шишей}`", peer, client)
+						}
+					} else if cmd == "help" {
+						sendMsg("https://vk.com/@wombat_bot-kak-polzovatsya-devtools", peer, client)
+					}
+				} else if strings.TrimSpace(txt) == "devtools on" {
+					womb.Titles[0] = titles[0]
+					users[peer] = womb
+					saveUsers()
+					sendMsg("Выдан титул \"Вомботестер\" (ID: 0)", peer, client)
 				}
 			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
 				if isInUsers {
@@ -151,7 +192,15 @@ func main() {
 				}
 			} else if isInList(txt, []string{"о вомбате", "вомбат инфо"}) {
 				if isInUsers {
-					sendMsg(fmt.Sprintf("Вомбат по имени %s имеет: \n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", womb.Name, womb.XP, womb.Health, womb.Force, womb.Money), peer, client)
+					strTitles := ""
+					for id, elem := range womb.Titles {
+						strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+					}
+					strTitles = strings.TrimSuffix(strTitles, " | ")
+					if strings.TrimSpace(strTitles) == "" {
+						strTitles = "нет"
+					}
+					sendMsg(fmt.Sprintf("Вомбат  %s\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", womb.Name, strTitles, womb.XP, womb.Health, womb.Force, womb.Money), peer, client)
 				} else {
 					sendMsg("У вас ещё нет вомбата...", peer, client)
 				}
@@ -211,7 +260,7 @@ func main() {
 					if womb.Money >= 1 {
 						womb.Money--
 						rand.Seed(time.Now().UnixNano())
-						if rand.Int()%2 == 0 {
+						if ch := rand.Int(); ch%2 == 0 {
 							rand.Seed(time.Now().UnixNano())
 							win := rand.Intn(9) + 1
 							womb.Money += uint64(win)
@@ -226,6 +275,20 @@ func main() {
 					}
 				} else {
 					sendMsg("А ты куда? У тебя вомбата нет...", peer, client)
+				}
+			} else if strings.HasPrefix(strings.ToLower(txt), "о титуле") {
+				strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле "))
+				if _, err := strconv.ParseInt(strID, 10, 64); err == nil {
+					i, err := strconv.Atoi(strID)
+					checkerr(err)
+					ID := uint16(i)
+					if elem, ok := titles[ID]; ok {
+						sendMsg(fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), peer, client)
+					} else {
+						sendMsg(fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), peer, client)
+					}
+				} else {
+					sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `о титуле {ID титула}`", peer, client)
 				}
 			}
 		}
