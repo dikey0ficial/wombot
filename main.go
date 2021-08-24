@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	// "sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,12 +36,62 @@ type User struct { // параметры юзера
 	Titles map[uint16]Title `json:"titles"`
 }
 
+/*
+// Sorter нужен для сортировки
+type Sorter interface {
+	Len() int
+	Less(i, j int) bool
+	Swap(i, j int)
+}
+
+// ByMoney ;
+type ByMoney map[int64]User
+
+//Len ;
+func (a ByMoney) Len() int { return len(a) }
+
+//Less ;
+func (a ByMoney) Less(i, j int) bool { return a[int64(i)].Money < a[int64(j)].Money }
+
+//Swap ;
+func (a ByMoney) Swap(i, j int) { a[int64(i)], a[int64(j)] = a[int64(j)], a[int64(i)] }
+
+// ByXP ;
+type ByXP map[int64]User
+
+//Len ;
+func (a ByXP) Len() int { return len(a) }
+
+//Less ;
+func (a ByXP) Less(i, j int) bool { return a[int64(i)].XP < a[int64(j)].XP }
+
+//Swap ;
+func (a ByXP) Swap(i, j int) { a[int64(i)], a[int64(j)] = a[int64(j)], a[int64(i)] }
+
+// ByForce ;
+type ByForce map[int64]User
+
+//Len ;
+func (a ByForce) Len() int { return len(a) }
+
+//Less ;
+func (a ByForce) Less(i, j int) bool { return a[int64(i)].Force < a[int64(j)].Force }
+
+//Swap ;
+func (a ByForce) Swap(i, j int) { a[int64(i)], a[int64(j)] = a[int64(j)], a[int64(i)] }
+
+*/
+
 var users = map[int64]User{}
 
 var titles = map[uint16]Title{
 	0: Title{
 		Name: "Вомботестер",
 		Desc: "Тестирует вомбота; даёт право пользоваться devtools",
+	},
+	1: Title{
+		Name: "Спамер",
+		Desc: "Настолько достал админа, что получил этот титул; забирает право удалить вомбата",
 	},
 }
 
@@ -160,7 +211,7 @@ func main() {
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "devtools") {
 				if _, ok := womb.Titles[0]; ok {
-					cmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "devtools "))
+					cmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "devtools"))
 					if strings.HasPrefix(cmd, "set money") {
 						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money "))
 						if _, err := strconv.ParseInt(strNewMoney, 10, 64); err == nil {
@@ -184,25 +235,15 @@ func main() {
 				}
 			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
 				if isInUsers {
-					delete(users, peer)
-					saveUsers()
-					sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, client)
+					if _, ok := womb.Titles[1]; !ok {
+						delete(users, peer)
+						saveUsers()
+						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, client)
+					} else {
+						sendMsg("Ошибка: вы лишены права уничтожать вомбата; обратитксь к @dikey_oficial за разрешением", peer, client)
+					}
 				} else {
 					sendMsg("Но у вас нет вомбата...", peer, client)
-				}
-			} else if isInList(txt, []string{"о вомбате", "вомбат инфо"}) {
-				if isInUsers {
-					strTitles := ""
-					for id, elem := range womb.Titles {
-						strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
-					}
-					strTitles = strings.TrimSuffix(strTitles, " | ")
-					if strings.TrimSpace(strTitles) == "" {
-						strTitles = "нет"
-					}
-					sendMsg(fmt.Sprintf("Вомбат  %s\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", womb.Name, strTitles, womb.XP, womb.Health, womb.Force, womb.Money), peer, client)
-				} else {
-					sendMsg("У вас ещё нет вомбата...", peer, client)
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "поменять имя") {
 				if isInUsers {
@@ -277,8 +318,10 @@ func main() {
 					sendMsg("А ты куда? У тебя вомбата нет...", peer, client)
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "о титуле") {
-				strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле "))
-				if _, err := strconv.ParseInt(strID, 10, 64); err == nil {
+				strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле"))
+				if strID == "" {
+					sendMsg("Ошибка: пустой ID титула", peer, client)
+				} else if _, err := strconv.ParseInt(strID, 10, 64); err == nil {
 					i, err := strconv.Atoi(strID)
 					checkerr(err)
 					ID := uint16(i)
@@ -289,6 +332,51 @@ func main() {
 					}
 				} else {
 					sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `о титуле {ID титула}`", peer, client)
+				}
+				// } else if strings.HasPrefix(strings.ToLower(txt), "рейтинг") {
+				// 	sorting := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "рейтинг"))
+				// 	sortedUsers := users
+				// 	if isInList(sorting, []string{"шиши", "шиш", "деньги", "монеты", "монетки"}) {
+				// 		sort.Sort(ByMoney(sortedUsers))
+
+				// 		}
+				// 	}
+			} else if strings.HasPrefix(strings.ToLower(txt), "о вомбате") {
+				strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о вомбате"))
+				log.Println(strID, txt)
+				if strID == "" {
+					if isInUsers {
+						strTitles := ""
+						for id, elem := range womb.Titles {
+							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+						}
+						strTitles = strings.TrimSuffix(strTitles, " | ")
+						if strings.TrimSpace(strTitles) == "" {
+							strTitles = "нет"
+						}
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", womb.Name, peer, strTitles, womb.XP, womb.Health, womb.Force, womb.Money), peer, client)
+					} else {
+						sendMsg("У вас ещё нет вомбата...", peer, client)
+					}
+				} else if _, err := strconv.ParseInt(strID, 10, 64); err == nil {
+					ID, err := strconv.ParseInt(strID, 10, 64)
+					checkerr(err)
+					if _, ok := users[ID]; ok {
+						tWomb := users[ID]
+						strTitles := ""
+						for id, elem := range tWomb.Titles {
+							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+						}
+						strTitles = strings.TrimSuffix(strTitles, " | ")
+						if strings.TrimSpace(strTitles) == "" {
+							strTitles = "нет"
+						}
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
+					} else {
+						sendMsg(fmt.Sprintf("Ошибка: игрока с ID %d не найдено", ID), peer, client)
+					}
+				} else {
+					sendMsg(fmt.Sprintf("Ошибка: \"%s\" не является числом", strID), peer, client)
 				}
 			}
 		}
