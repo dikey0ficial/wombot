@@ -34,6 +34,7 @@ type User struct { // параметры юзера
 	Force  uint32           `json:"force"`
 	Money  uint64           `json:"money"`
 	Titles map[uint16]Title `json:"titles"`
+	Subs   map[string]int64 `json:"subs"`
 }
 
 /*
@@ -95,7 +96,7 @@ var titles = map[uint16]Title{
 	},
 }
 
-var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов"}
+var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -187,11 +188,11 @@ func main() {
 
 			log.Println(peer, womb.Name, txt)
 
-			if isInList(txt, []string{"старт", "начать", "/старт", "/start", "start"}) {
+			if isInList(txt, []string{"старт", "начать", "/старт", "/start", "start", "привет"}) {
 				if isInUsers {
 					sendMsg(fmt.Sprintf("Здравствуйте, %s!", users[peer].Name), peer, client)
 				} else {
-					sendMsg("Драсьте. Возьмите вомбата с командой `Взять вомбата` или `Купить вомбата у арабов`. напиши `помощь`", peer, client)
+					sendMsg("Привет! Для того, чтобы ознакомиться с механикой бота, почитай справку https://vk.com/@wombat_bot-help (она также доступна по команде `помощь`. Чтобы завести вомбата, напиши `взять вомбата`. Приятной игры!", peer, client)
 				}
 			} else if isInList(txt, []string{"взять вомбата", "купить вомбата у арабов", "хочу вомбата"}) {
 				if isInUsers {
@@ -204,6 +205,7 @@ func main() {
 						Force:  2,
 						Money:  10,
 						Titles: map[uint16]Title{},
+						Subs:   map[string]int64{},
 					}
 					womb = users[peer]
 					saveUsers()
@@ -341,6 +343,80 @@ func main() {
 
 				// 		}
 				// 	}
+			} else if strings.HasPrefix(strings.ToLower(txt), "подписаться") {
+				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "подписаться")))
+				if len(args) == 0 {
+					sendMsg("Ошибка: пропущены аргументы `ID` и `алиас`. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]`", peer, client)
+				} else if len(args) == 1 {
+					sendMsg("Ошибка: пропущен аргумент `алиас`. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]`", peer, client)
+				} else if len(args) == 2 {
+					if ID, err := strconv.ParseInt(args[0], 10, 64); err == nil {
+						if _, err := strconv.ParseInt(args[1], 10, 64); err == nil {
+							sendMsg("Ошибка: алиас не должен быть числом", peer, client)
+						} else {
+							if elem, ok := womb.Subs[args[1]]; !ok {
+								if _, ok := users[ID]; ok {
+									womb.Subs[args[1]] = ID
+									users[peer] = womb
+									saveUsers()
+									sendMsg(fmt.Sprintf("Вомбат с ID %d добавлен в ваши подписки", ID), peer, client)
+								} else {
+									sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
+								}
+							} else {
+								sendMsg(fmt.Sprintf("Ошибка: алиас %s занят id %d", args[1], elem), peer, client)
+							}
+						}
+					} else {
+						sendMsg(fmt.Sprintf("Ошибка: `%s` не является числом", args[0]), peer, client)
+					}
+				} else {
+					sendMsg("Ошибка: слишком много аргументов. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]", peer, client)
+				}
+			} else if strings.HasPrefix(strings.ToLower(txt), "отписаться") {
+				alias := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "отписаться"))
+				if _, ok := womb.Subs[alias]; ok {
+					delete(womb.Subs, alias)
+					users[peer] = womb
+					saveUsers()
+					sendMsg(fmt.Sprintf("Вы отписались от пользователя с алиасом %s", alias), peer, client)
+				} else {
+					sendMsg(fmt.Sprintf("Ошибка: вы не подписаны на пользователя с алиасом `%s`", alias), peer, client)
+				}
+			} else if isInList(txt, []string{"подписки", "мои подписки", "список подписок"}) {
+				strSubs := "Вот список твоих подписок:"
+				if len(womb.Subs) != 0 {
+					for alias, id := range womb.Subs {
+						if tWomb, ok := users[id]; ok {
+							strSubs += fmt.Sprintf("\n %s | ID: %d | Алиас: %s", tWomb.Name, id, alias)
+						} else {
+							strSubs += fmt.Sprintf("\n Ошибка: пользователь по алиасу `%s` не найден", alias)
+						}
+					}
+				} else {
+					strSubs = "У тебя пока ещё нет подписок"
+				}
+				sendMsg(strSubs, peer, client)
+			} else if isInList(txt, []string{"мои вомбаты", "мои вомбатроны", "вомбатроны", "лента подписок"}) {
+				if len(womb.Subs) == 0 {
+					sendMsg("У тебя пока ещё нет подписок", peer, client)
+					continue
+				}
+				for alias, ID := range womb.Subs {
+					if tWomb, ok := users[ID]; ok {
+						strTitles := ""
+						for id, elem := range tWomb.Titles {
+							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+						}
+						strTitles = strings.TrimSuffix(strTitles, " | ")
+						if strings.TrimSpace(strTitles) == "" {
+							strTitles = "нет"
+						}
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
+					} else {
+						sendMsg(fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не обнаружено", alias), peer, client)
+					}
+				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомбате") {
 				strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о вомбате"))
 				log.Println(strID, txt)
@@ -375,8 +451,22 @@ func main() {
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: игрока с ID %d не найдено", ID), peer, client)
 					}
+				} else if _, ok := womb.Subs[strID]; ok {
+					if tWomb, ok := users[womb.Subs[strID]]; ok {
+						strTitles := ""
+						for id, elem := range tWomb.Titles {
+							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+						}
+						strTitles = strings.TrimSuffix(strTitles, " | ")
+						if strings.TrimSpace(strTitles) == "" {
+							strTitles = "нет"
+						}
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, womb.Subs[strID], strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
+					} else {
+						sendMsg(fmt.Sprintf("Ошибка: неправильный алиас `%s` или не найден пользователь с ID %d. Обратитесь к @dikey_oficial, если такой вомбат есть", strID, womb.Subs[strID]), peer, client)
+					}
 				} else {
-					sendMsg(fmt.Sprintf("Ошибка: \"%s\" не является числом", strID), peer, client)
+					sendMsg(fmt.Sprintf("Ошибка: не найден алиас `%s`", strID), peer, client)
 				}
 			}
 		}
