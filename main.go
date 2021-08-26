@@ -434,9 +434,7 @@ func main() {
 					} else {
 						sendMsg("У вас ещё нет вомбата...", peer, client)
 					}
-				} else if _, err := strconv.ParseInt(strID, 10, 64); err == nil {
-					ID, err := strconv.ParseInt(strID, 10, 64)
-					checkerr(err)
+				} else if ID, err := strconv.ParseInt(strID, 10, 64); err == nil {
 					if _, ok := users[ID]; ok {
 						tWomb := users[ID]
 						strTitles := ""
@@ -467,6 +465,63 @@ func main() {
 					}
 				} else {
 					sendMsg(fmt.Sprintf("Ошибка: не найден алиас `%s`", strID), peer, client)
+				}
+			} else if strings.HasPrefix(strings.ToLower(txt), "перевести шиши") {
+				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "перевести шиши")))
+				if len(args) < 2 {
+					sendMsg("Ошибка: вы пропустили аргумент(ы). Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`", peer, client)
+				} else if len(args) > 2 {
+					sendMsg("Ошибка: слишком много аргументов. Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`", peer, client)
+				} else {
+					if amount, err := strconv.ParseUint(args[0], 10, 64); err == nil {
+						if ID, err := strconv.ParseInt(args[1], 10, 64); err == nil {
+							if womb.Money > amount {
+								if amount != 0 {
+									if tWomb, ok := users[ID]; ok {
+										womb.Money -= amount
+										tWomb.Money += amount
+										users[peer], users[ID] = womb, tWomb
+										saveUsers()
+										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
+										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
+									} else {
+										sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
+									}
+								} else {
+									sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
+								}
+							} else {
+								sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)", amount, womb.Money), peer, client)
+							}
+						} else if ID, ok := womb.Subs[args[1]]; ok {
+							if womb.Money > amount {
+								if amount != 0 {
+									if tWomb, ok := users[ID]; ok {
+										womb.Money -= amount
+										tWomb.Money += amount
+										users[peer], users[ID] = womb, tWomb
+										saveUsers()
+										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
+										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
+									} else {
+										sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
+									}
+								} else {
+									sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
+								}
+							} else {
+								sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)", amount, womb.Money), peer, client)
+							}
+						} else {
+							sendMsg(fmt.Sprintf("Ошибка: алиас `%s` не обнаружено", args[1]), peer, client)
+						}
+					} else {
+						if _, err := strconv.ParseInt(args[0], 10, 64); err == nil {
+							sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
+						} else {
+							sendMsg("Ошибка: кол-во переводимых шишей быть числом", peer, client)
+						}
+					}
 				}
 			}
 		}
