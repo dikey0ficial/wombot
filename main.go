@@ -216,10 +216,9 @@ func main() {
 					cmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "devtools"))
 					if strings.HasPrefix(cmd, "set money") {
 						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money "))
-						if _, err := strconv.ParseInt(strNewMoney, 10, 64); err == nil {
-							i, err := strconv.Atoi(strNewMoney)
+						if i, err := strconv.ParseUint(strNewMoney, 10, 64); err == nil {
 							checkerr(err)
-							womb.Money = uint64(i)
+							womb.Money = i
 							users[peer] = womb
 							saveUsers()
 							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей на счету: %d", womb.Money), peer, client)
@@ -477,6 +476,10 @@ func main() {
 						if ID, err := strconv.ParseInt(args[1], 10, 64); err == nil {
 							if womb.Money > amount {
 								if amount != 0 {
+									if ID == peer {
+										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
+										continue
+									}
 									if tWomb, ok := users[ID]; ok {
 										womb.Money -= amount
 										tWomb.Money += amount
@@ -496,6 +499,10 @@ func main() {
 						} else if ID, ok := womb.Subs[args[1]]; ok {
 							if womb.Money > amount {
 								if amount != 0 {
+									if ID == peer {
+										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
+										continue
+									}
 									if tWomb, ok := users[ID]; ok {
 										womb.Money -= amount
 										tWomb.Money += amount
