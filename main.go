@@ -215,7 +215,7 @@ func main() {
 				if _, ok := womb.Titles[0]; ok {
 					cmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "devtools"))
 					if strings.HasPrefix(cmd, "set money") {
-						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money "))
+						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money"))
 						if i, err := strconv.ParseUint(strNewMoney, 10, 64); err == nil {
 							checkerr(err)
 							womb.Money = i
@@ -225,8 +225,36 @@ func main() {
 						} else {
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools set money {кол-во шишей}`", peer, client)
 						}
+					} else if strings.HasPrefix(cmd, "reset") {
+						arg := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "reset"))
+						switch arg {
+						case "force":
+							womb.Force = 2
+							users[peer] = womb
+							saveUsers()
+							sendMsg("Операция произведена успешно!", peer, client)
+						case "health":
+							womb.Health = 5
+							users[peer] = womb
+							saveUsers()
+							sendMsg("Операция произведена успешно!", peer, client)
+						case "xp":
+							womb.XP = 0
+							users[peer] = womb
+							saveUsers()
+							sendMsg("Операция произведена успешно!", peer, client)
+						case "all":
+							womb.Force = 2
+							womb.Health = 5
+							womb.XP = 0
+							users[peer] = womb
+							saveUsers()
+							sendMsg("Операция произведена успешно!", peer, client)
+						default:
+							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools reset [force/health/xp/all]`", peer, client)
+						}
 					} else if cmd == "help" {
-						sendMsg("https://vk.com/@wombat_bot-kak-polzovatsya-devtools", peer, client)
+						sendMsg("https://vk.com/@wombat_bot-devtools", peer, client)
 					}
 				} else if strings.TrimSpace(txt) == "devtools on" {
 					womb.Titles[0] = titles[0]
@@ -530,6 +558,9 @@ func main() {
 						}
 					}
 				}
+			} else if txt == "обновить данные" && peer == 415610367 {
+				loadUsers()
+				sendMsg("Успешно обновлено!", peer, client)
 			}
 		}
 	}
