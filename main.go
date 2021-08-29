@@ -94,6 +94,10 @@ var titles = map[uint16]Title{
 		Name: "Спамер",
 		Desc: "Настолько достал админа, что получил этот титул; забирает право удалить вомбата",
 	},
+	2: Title{
+		Name: "Квесоед",
+		Desc: "Насладился чудесным квесом в первый раз; повышает вероятность найти деньги на денежной дороге",
+	},
 }
 
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
@@ -330,7 +334,8 @@ func main() {
 					if womb.Money >= 1 {
 						womb.Money--
 						rand.Seed(time.Now().UnixNano())
-						if ch := rand.Int(); ch%2 == 0 {
+						_, ok := womb.Titles[2]
+						if ch := rand.Int(); ch%2 == 0 || ok && (ch%2 == 0 || ch%3 == 0) {
 							rand.Seed(time.Now().UnixNano())
 							win := rand.Intn(9) + 1
 							womb.Money += uint64(win)
@@ -561,6 +566,27 @@ func main() {
 			} else if txt == "обновить данные" && peer == 415610367 {
 				loadUsers()
 				sendMsg("Успешно обновлено!", peer, client)
+			} else if isInList(txt, []string{"купить квес", "купить квесс", "купить qwess", "попить квес", "попить квесс", "попить qwess"}) {
+				if isInUsers {
+					if womb.Money >= 256 {
+						if _, ok := womb.Titles[2]; !ok {
+							womb.Titles[2] = titles[2]
+							womb.Money -= 256
+							users[peer] = womb
+							saveUsers()
+							sendMsg("Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2", peer, client)
+						} else {
+							womb.Money -= 256
+							users[peer] = womb
+							saveUsers()
+							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!", peer, client)
+						}
+					} else {
+						sendMsg("Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше", peer, client)
+					}
+				} else {
+					sendMsg("К сожалению, вам нужны шиши, чтобы купить квес, а шиши есть только у вомбатов...", peer, client)
+				}
 			}
 		}
 	}
