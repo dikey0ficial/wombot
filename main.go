@@ -6,101 +6,47 @@ import (
 	"math/rand"
 	"os"
 	// "sort"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/go-vk-api/vk"
 	lp "github.com/go-vk-api/vk/longpoll/user"
 	jsoniter "github.com/json-iterator/go"
+	db "github.com/upper/db/v4"
+	"github.com/upper/db/v4/adapter/mongo"
+	"strconv"
+	"strings"
+	"time"
 )
 
-// Config нужен для токена и мб настроек
+// MongoConfig нужен для настроек монги
+type MongoConfig struct {
+	Database string `json:"db"`
+	Host     string `json:"host"`
+	Login    string `json:"login"`
+	Password string `json:"pwrd"`
+}
+
+// Config нужен для настроек
 type Config struct {
-	Token string `json:"token"`
+	Token string      `json:"token"`
+	Mongo MongoConfig `json:"mongo"`
 }
 
 // Title — описание титула
 type Title struct {
-	Name string `json:"name"`
-	Desc string `json:"desc"`
+	Name string `db:"name"`
+	Desc string `db:"desc"`
 }
 
 // User — описание пользователя
 type User struct { // параметры юзера
-	Name   string           `json:"name"`
-	XP     uint32           `json:"xp"`
-	Health uint32           `json:"health"`
-	Force  uint32           `json:"force"`
-	Money  uint64           `json:"money"`
-	Titles map[uint16]Title `json:"titles"`
-	Subs   map[string]int64 `json:"subs"`
+	ID     int64            `db:"_id"`
+	Name   string           `db:"name"`
+	XP     uint32           `db:"xp"`
+	Health uint32           `db:"health"`
+	Force  uint32           `db:"force"`
+	Money  uint64           `db:"money"`
+	Titles map[uint16]Title `db:"titles"`
+	Subs   map[string]int64 `db:"subs"`
 }
-
-/*
-// Sorter нужен для сортировки
-type Sorter interface {
-	Len() int
-	Less(i, j int) bool
-	Swap(i, j int)
-}
-
-// ByMoney ;
-type ByMoney map[int64]User
-
-//Len ;
-func (a ByMoney) Len() int { return len(a) }
-
-//Less ;
-func (a ByMoney) Less(i, j int) bool { return a[int64(i)].Money < a[int64(j)].Money }
-
-//Swap ;
-func (a ByMoney) Swap(i, j int) { a[int64(i)], a[int64(j)] = a[int64(j)], a[int64(i)] }
-
-// ByXP ;
-type ByXP map[int64]User
-
-//Len ;
-func (a ByXP) Len() int { return len(a) }
-
-//Less ;
-func (a ByXP) Less(i, j int) bool { return a[int64(i)].XP < a[int64(j)].XP }
-
-//Swap ;
-func (a ByXP) Swap(i, j int) { a[int64(i)], a[int64(j)] = a[int64(j)], a[int64(i)] }
-
-// ByForce ;
-type ByForce map[int64]User
-
-//Len ;
-func (a ByForce) Len() int { return len(a) }
-
-//Less ;
-func (a ByForce) Less(i, j int) bool { return a[int64(i)].Force < a[int64(j)].Force }
-
-//Swap ;
-func (a ByForce) Swap(i, j int) { a[int64(i)], a[int64(j)] = a[int64(j)], a[int64(i)] }
-
-*/
-
-var users = map[int64]User{}
-
-var titles = map[uint16]Title{
-	0: Title{
-		Name: "Вомботестер",
-		Desc: "Тестирует вомбота; даёт право пользоваться devtools",
-	},
-	1: Title{
-		Name: "Спамер",
-		Desc: "Настолько достал админа, что получил этот титул; забирает право удалить вомбата",
-	},
-	2: Title{
-		Name: "Квесоед",
-		Desc: "Насладился чудесным квесом в первый раз; повышает вероятность найти деньги на денежной дороге",
-	},
-}
-
-var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -123,24 +69,46 @@ func loadConfig() (Config, error) {
 	return result, err
 }
 
+func initSess() db.Session {
+	conf, err := loadConfig()
+	checkerr(err)
+	sess, err := mongo.Open(mongo.ConnectionURL{
+		Database: conf.Mongo.Database,
+		Host:     conf.Mongo.Host,
+		User:     conf.Mongo.Login,
+		Password: conf.Mongo.Password,
+	})
+	checkerr(err)
+	return sess
+}
+
+var sess = initSess()
+
+var titles = map[uint16]Title{
+	0: Title{
+		Name: "Вомботестер",
+		Desc: "Тестирует вомбота; даёт право пользоваться devtools",
+	},
+	1: Title{
+		Name: "Спамер",
+		Desc: "Настолько достал админа, что получил этот титул; забирает право удалить вомбата",
+	},
+	2: Title{
+		Name: "Квесоед",
+		Desc: "Насладился чудесным квесом в первый раз; повышает вероятность найти деньги на денежной дороге",
+	},
+}
+
+var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
+
+var users db.Collection
+
 func loadUsers() {
-	file, err := os.Open("users.json")
-	checkerr(err)
-	defer file.Close()
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&users)
-	file.Close()
-	checkerr(err)
+	users = sess.Collection("users")
 }
 
 func saveUsers() {
-	jsonFile, err := os.Create("users.json")
-	checkerr(err)
-	data, err := json.Marshal(users)
-	checkerr(err)
-	defer jsonFile.Close()
-	jsonFile.Write(data)
-	jsonFile.Close()
+
 }
 
 func isInList(str string, list []string) bool {
@@ -163,10 +131,9 @@ func sendMsg(message string, peer int64, client *vk.Client) {
 }
 
 func main() {
-	conf := Config{}
+	defer sess.Close()
 	conf, err := loadConfig()
 	checkerr(err)
-
 	loadUsers()
 
 	client, err := vk.NewClientWithOptions(
@@ -179,7 +146,7 @@ func main() {
 	stream, err := longpoll.GetUpdatesStream(0)
 	checkerr(err)
 
-	log.Println("Start!")
+	log.Println("Start!\n")
 
 	for update := range stream.Updates {
 		switch data := update.Data.(type) {
@@ -188,13 +155,21 @@ func main() {
 				break
 			}
 			peer, txt := data.PeerID, data.Text
-			womb, isInUsers := users[peer]
+
+			womb := User{}
+			res := users.Find(fmt.Sprintf(`{"_id":%d}}`, peer))
+
+			rCount, err := res.Count()
+			checkerr(err)
+			isInUsers := rCount != 0
+
+			res.One(&womb)
 
 			log.Println(peer, womb.Name, txt)
 
 			if isInList(txt, []string{"старт", "начать", "/старт", "/start", "start", "привет"}) {
 				if isInUsers {
-					sendMsg(fmt.Sprintf("Здравствуйте, %s!", users[peer].Name), peer, client)
+					sendMsg(fmt.Sprintf("Здравствуйте, %s!", womb.Name), peer, client)
 				} else {
 					sendMsg("Привет! Для того, чтобы ознакомиться с механикой бота, почитай справку https://vk.com/@wombat_bot-help (она также доступна по команде `помощь`. Чтобы завести вомбата, напиши `взять вомбата`. Приятной игры!", peer, client)
 				}
@@ -202,7 +177,7 @@ func main() {
 				if isInUsers {
 					sendMsg("У тебя как бы уже есть вомбат лолкек. Если хочешь от него избавиться, то напиши `приготовить шашлык`", peer, client)
 				} else {
-					users[peer] = User{
+					newWomb := User{
 						Name:   standartNicknames[rand.Intn(len(standartNicknames))],
 						XP:     0,
 						Health: 5,
@@ -211,7 +186,8 @@ func main() {
 						Titles: map[uint16]Title{},
 						Subs:   map[string]int64{},
 					}
-					womb = users[peer]
+					err = users.InsertReturning(&newWomb)
+					checkerr(err)
 					saveUsers()
 					sendMsg(fmt.Sprintf("Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты", womb.Name), peer, client)
 				}
