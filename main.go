@@ -84,21 +84,6 @@ func initSess() db.Session {
 
 var sess = initSess()
 
-var titles = map[uint16]Title{
-	0: Title{
-		Name: "Вомботестер",
-		Desc: "Тестирует вомбота; даёт право пользоваться devtools",
-	},
-	1: Title{
-		Name: "Спамер",
-		Desc: "Настолько достал админа, что получил этот титул; забирает право удалить вомбата",
-	},
-	2: Title{
-		Name: "Квесоед",
-		Desc: "Насладился чудесным квесом в первый раз; повышает вероятность найти деньги на денежной дороге",
-	},
-}
-
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
 
 var users db.Collection
@@ -107,8 +92,10 @@ func loadUsers() {
 	users = sess.Collection("users")
 }
 
-func saveUsers() {
+var titles db.Collection
 
+func loadTitles() {
+	titles = sess.Collection("titles")
 }
 
 func isInList(str string, list []string) bool {
@@ -134,7 +121,9 @@ func main() {
 	defer sess.Close()
 	conf, err := loadConfig()
 	checkerr(err)
+
 	loadUsers()
+	loadTitles()
 
 	client, err := vk.NewClientWithOptions(
 		vk.WithToken(conf.Token),
@@ -162,8 +151,10 @@ func main() {
 			rCount, err := res.Count()
 			checkerr(err)
 			isInUsers := rCount != 0
-
-			res.One(&womb)
+			if isInUsers {
+				err = res.One(&womb)
+				checkerr(err)
+			}
 
 			log.Println(peer, womb.Name, txt)
 
@@ -186,9 +177,9 @@ func main() {
 						Titles: map[uint16]Title{},
 						Subs:   map[string]int64{},
 					}
-					err = users.InsertReturning(&newWomb)
+					_, err = users.Insert(&newWomb)
 					checkerr(err)
-					saveUsers()
+
 					sendMsg(fmt.Sprintf("Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты", womb.Name), peer, client)
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "devtools") {
@@ -199,8 +190,7 @@ func main() {
 						if i, err := strconv.ParseUint(strNewMoney, 10, 64); err == nil {
 							checkerr(err)
 							womb.Money = i
-							users[peer] = womb
-							saveUsers()
+
 							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей на счету: %d", womb.Money), peer, client)
 						} else {
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools set money {кол-во шишей}`", peer, client)
@@ -210,25 +200,23 @@ func main() {
 						switch arg {
 						case "force":
 							womb.Force = 2
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "health":
 							womb.Health = 5
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "xp":
 							womb.XP = 0
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
+
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "all":
 							womb.Force = 2
 							womb.Health = 5
 							womb.XP = 0
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
+
 							sendMsg("Операция произведена успешно!", peer, client)
 						default:
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools reset [force/health/xp/all]`", peer, client)
@@ -237,16 +225,18 @@ func main() {
 						sendMsg("https://vk.com/@wombat_bot-devtools", peer, client)
 					}
 				} else if strings.TrimSpace(txt) == "devtools on" {
-					womb.Titles[0] = titles[0]
-					users[peer] = womb
-					saveUsers()
+					newTitle := Title{}
+					titles.Find("{\"_id\":0}").One(&newTitle)
+					womb.Titles[0] = newTitle
+					res.Update(womb)
+
 					sendMsg("Выдан титул \"Вомботестер\" (ID: 0)", peer, client)
 				}
 			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
 				if isInUsers {
 					if _, ok := womb.Titles[1]; !ok {
-						delete(users, peer)
-						saveUsers()
+						err = res.Delete()
+						checkerr(err)
 						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, client)
 					} else {
 						sendMsg("Ошибка: вы лишены права уничтожать вомбата; обратитксь к @dikey_oficial за разрешением", peer, client)
@@ -263,8 +253,8 @@ func main() {
 						} else if name != "" {
 							womb.Money -= 3
 							womb.Name = name
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
+
 							sendMsg(fmt.Sprintf("Теперь вашего вомбата зовут %s. С вашего счёта сняли 3 шиша", name), peer, client)
 						} else {
 							sendMsg("У вас пустое имя...", peer, client)
@@ -282,8 +272,8 @@ func main() {
 					if womb.Money >= 5 {
 						womb.Money -= 5
 						womb.Health++
-						users[peer] = womb
-						saveUsers()
+						res.Update(womb)
+
 						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, client)
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 здоровье = 5 шишей", peer, client)
@@ -296,8 +286,8 @@ func main() {
 					if womb.Money >= 3 {
 						womb.Money -= 3
 						womb.Force++
-						users[peer] = womb
-						saveUsers()
+						res.Update(womb)
+
 						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, client)
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 мощь = 3 шиша", peer, client)
@@ -319,8 +309,8 @@ func main() {
 						} else {
 							sendMsg("Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли", peer, client)
 						}
-						users[peer] = womb
-						saveUsers()
+						res.Update(womb)
+
 					} else {
 						sendMsg("Охранники тебя прогнали; они требуют шиш за проход, а у тебя и шиша-то нет", peer, client)
 					}
@@ -365,8 +355,8 @@ func main() {
 							if elem, ok := womb.Subs[args[1]]; !ok {
 								if _, ok := users[ID]; ok {
 									womb.Subs[args[1]] = ID
-									users[peer] = womb
-									saveUsers()
+									res.Update(womb)
+
 									sendMsg(fmt.Sprintf("Вомбат с ID %d добавлен в ваши подписки", ID), peer, client)
 								} else {
 									sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
@@ -385,8 +375,8 @@ func main() {
 				alias := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "отписаться"))
 				if _, ok := womb.Subs[alias]; ok {
 					delete(womb.Subs, alias)
-					users[peer] = womb
-					saveUsers()
+					res.Update(womb)
+
 					sendMsg(fmt.Sprintf("Вы отписались от пользователя с алиасом %s", alias), peer, client)
 				} else {
 					sendMsg(fmt.Sprintf("Ошибка: вы не подписаны на пользователя с алиасом `%s`", alias), peer, client)
@@ -493,7 +483,7 @@ func main() {
 										womb.Money -= amount
 										tWomb.Money += amount
 										users[peer], users[ID] = womb, tWomb
-										saveUsers()
+
 										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
 										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
 									} else {
@@ -516,7 +506,7 @@ func main() {
 										womb.Money -= amount
 										tWomb.Money += amount
 										users[peer], users[ID] = womb, tWomb
-										saveUsers()
+
 										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
 										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
 									} else {
@@ -548,13 +538,13 @@ func main() {
 						if _, ok := womb.Titles[2]; !ok {
 							womb.Titles[2] = titles[2]
 							womb.Money -= 256
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
+
 							sendMsg("Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2", peer, client)
 						} else {
 							womb.Money -= 256
-							users[peer] = womb
-							saveUsers()
+							res.Update(womb)
+
 							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!", peer, client)
 						}
 					} else {
