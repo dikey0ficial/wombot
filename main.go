@@ -135,7 +135,7 @@ func main() {
 	stream, err := longpoll.GetUpdatesStream(0)
 	checkerr(err)
 
-	log.Println("Start!\n")
+	log.Println("Start!")
 
 	for update := range stream.Updates {
 		switch data := update.Data.(type) {
@@ -146,13 +146,13 @@ func main() {
 			peer, txt := data.PeerID, data.Text
 
 			womb := User{}
-			res := users.Find(fmt.Sprintf(`{"_id":%d}}`, peer))
+			wombRes := users.Find(fmt.Sprintf(`{"_id":%d}}`, peer))
 
-			rCount, err := res.Count()
+			rCount, err := wombRes.Count()
 			checkerr(err)
 			isInUsers := rCount != 0
 			if isInUsers {
-				err = res.One(&womb)
+				err = wombRes.One(&womb)
 				checkerr(err)
 			}
 
@@ -200,22 +200,22 @@ func main() {
 						switch arg {
 						case "force":
 							womb.Force = 2
-							res.Update(womb)
+							wombRes.Update(womb)
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "health":
 							womb.Health = 5
-							res.Update(womb)
+							wombRes.Update(womb)
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "xp":
 							womb.XP = 0
-							res.Update(womb)
+							wombRes.Update(womb)
 
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "all":
 							womb.Force = 2
 							womb.Health = 5
 							womb.XP = 0
-							res.Update(womb)
+							wombRes.Update(womb)
 
 							sendMsg("Операция произведена успешно!", peer, client)
 						default:
@@ -228,14 +228,13 @@ func main() {
 					newTitle := Title{}
 					titles.Find("{\"_id\":0}").One(&newTitle)
 					womb.Titles[0] = newTitle
-					res.Update(womb)
-
+					wombRes.Update(womb)
 					sendMsg("Выдан титул \"Вомботестер\" (ID: 0)", peer, client)
 				}
 			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
 				if isInUsers {
 					if _, ok := womb.Titles[1]; !ok {
-						err = res.Delete()
+						err = wombRes.Delete()
 						checkerr(err)
 						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, client)
 					} else {
@@ -253,7 +252,7 @@ func main() {
 						} else if name != "" {
 							womb.Money -= 3
 							womb.Name = name
-							res.Update(womb)
+							wombRes.Update(womb)
 
 							sendMsg(fmt.Sprintf("Теперь вашего вомбата зовут %s. С вашего счёта сняли 3 шиша", name), peer, client)
 						} else {
@@ -272,7 +271,7 @@ func main() {
 					if womb.Money >= 5 {
 						womb.Money -= 5
 						womb.Health++
-						res.Update(womb)
+						wombRes.Update(womb)
 
 						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, client)
 					} else {
@@ -286,7 +285,7 @@ func main() {
 					if womb.Money >= 3 {
 						womb.Money -= 3
 						womb.Force++
-						res.Update(womb)
+						wombRes.Update(womb)
 
 						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, client)
 					} else {
@@ -309,7 +308,7 @@ func main() {
 						} else {
 							sendMsg("Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли", peer, client)
 						}
-						res.Update(womb)
+						wombRes.Update(womb)
 
 					} else {
 						sendMsg("Охранники тебя прогнали; они требуют шиш за проход, а у тебя и шиша-то нет", peer, client)
@@ -321,11 +320,15 @@ func main() {
 				strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле"))
 				if strID == "" {
 					sendMsg("Ошибка: пустой ID титула", peer, client)
-				} else if _, err := strconv.ParseInt(strID, 10, 64); err == nil {
-					i, err := strconv.Atoi(strID)
+				} else if i, err := strconv.ParseInt(strID, 10, 64); err == nil {
 					checkerr(err)
 					ID := uint16(i)
-					if elem, ok := titles[ID]; ok {
+					titleRes := titles.Find(fmt.Sprintf("{\"_id\":%d}", ID))
+					rCount, err = titleRes.Count()
+					checkerr(err)
+					if rCount != 0 {
+						elem := Title{}
+						titleRes.One(&elem)
 						sendMsg(fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), peer, client)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), peer, client)
@@ -353,9 +356,11 @@ func main() {
 							sendMsg("Ошибка: алиас не должен быть числом", peer, client)
 						} else {
 							if elem, ok := womb.Subs[args[1]]; !ok {
-								if _, ok := users[ID]; ok {
+								rCount, err = users.Find(fmt.Sprintf("{\"_id\":%d}", ID)).Count()
+								checkerr(err)
+								if rCount != 0 {
 									womb.Subs[args[1]] = ID
-									res.Update(womb)
+									wombRes.Update(womb)
 
 									sendMsg(fmt.Sprintf("Вомбат с ID %d добавлен в ваши подписки", ID), peer, client)
 								} else {
@@ -375,7 +380,7 @@ func main() {
 				alias := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "отписаться"))
 				if _, ok := womb.Subs[alias]; ok {
 					delete(womb.Subs, alias)
-					res.Update(womb)
+					wombRes.Update(womb)
 
 					sendMsg(fmt.Sprintf("Вы отписались от пользователя с алиасом %s", alias), peer, client)
 				} else {
@@ -385,7 +390,12 @@ func main() {
 				strSubs := "Вот список твоих подписок:"
 				if len(womb.Subs) != 0 {
 					for alias, id := range womb.Subs {
-						if tWomb, ok := users[id]; ok {
+						res := users.Find(fmt.Sprintf("{\"_id\":%d}", id))
+						rCount, err = res.Count()
+						checkerr(err)
+						if rCount != 0 {
+							tWomb := User{}
+							res.One(&tWomb)
 							strSubs += fmt.Sprintf("\n %s | ID: %d | Алиас: %s", tWomb.Name, id, alias)
 						} else {
 							strSubs += fmt.Sprintf("\n Ошибка: пользователь по алиасу `%s` не найден", alias)
@@ -401,7 +411,12 @@ func main() {
 					continue
 				}
 				for alias, ID := range womb.Subs {
-					if tWomb, ok := users[ID]; ok {
+					res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
+					rCount, err = res.Count()
+					checkerr(err)
+					if rCount != 0 {
+						tWomb := User{}
+						res.One(&tWomb)
 						strTitles := ""
 						for id, elem := range tWomb.Titles {
 							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
@@ -410,7 +425,7 @@ func main() {
 						if strings.TrimSpace(strTitles) == "" {
 							strTitles = "нет"
 						}
-						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, alias, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не обнаружено", alias), peer, client)
 					}
@@ -433,8 +448,12 @@ func main() {
 						sendMsg("У вас ещё нет вомбата...", peer, client)
 					}
 				} else if ID, err := strconv.ParseInt(strID, 10, 64); err == nil {
-					if _, ok := users[ID]; ok {
-						tWomb := users[ID]
+					res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
+					rCount, err = res.Count()
+					checkerr(err)
+					if rCount != 0 {
+						tWomb := User{}
+						res.One(&tWomb)
 						strTitles := ""
 						for id, elem := range tWomb.Titles {
 							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
@@ -448,7 +467,12 @@ func main() {
 						sendMsg(fmt.Sprintf("Ошибка: игрока с ID %d не найдено", ID), peer, client)
 					}
 				} else if _, ok := womb.Subs[strID]; ok {
-					if tWomb, ok := users[womb.Subs[strID]]; ok {
+					res := users.Find(fmt.Sprintf("{\"_id\":%d}", womb.Subs[strID]))
+					rCount, err = res.Count()
+					checkerr(err)
+					if rCount != 0 {
+						tWomb := User{}
+						res.One(&tWomb)
 						strTitles := ""
 						for id, elem := range tWomb.Titles {
 							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
@@ -457,7 +481,7 @@ func main() {
 						if strings.TrimSpace(strTitles) == "" {
 							strTitles = "нет"
 						}
-						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, womb.Subs[strID], strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: неправильный алиас `%s` или не найден пользователь с ID %d. Обратитесь к @dikey_oficial, если такой вомбат есть", strID, womb.Subs[strID]), peer, client)
 					}
@@ -475,19 +499,25 @@ func main() {
 						if ID, err := strconv.ParseInt(args[1], 10, 64); err == nil {
 							if womb.Money > amount {
 								if amount != 0 {
-									if ID == peer {
-										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
-										continue
-									}
-									if tWomb, ok := users[ID]; ok {
-										womb.Money -= amount
-										tWomb.Money += amount
-										users[peer], users[ID] = womb, tWomb
+									if ID != peer {
+										res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
+										rCount, err = res.Count()
+										checkerr(err)
+										if rCount != 0 {
+											tWomb := User{}
+											res.One(&tWomb)
+											womb.Money -= amount
+											tWomb.Money += amount
+											res.Update(tWomb)
+											wombRes.Update(womb)
 
-										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
-										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
+											sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
+											sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
+										} else {
+											sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
+										}
 									} else {
-										sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
+										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
 									}
 								} else {
 									sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
@@ -502,10 +532,16 @@ func main() {
 										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
 										continue
 									}
-									if tWomb, ok := users[ID]; ok {
+									res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
+									rCount, err = res.Count()
+									checkerr(err)
+									if rCount != 0 {
+										tWomb := User{}
+										res.One(&tWomb)
 										womb.Money -= amount
 										tWomb.Money += amount
-										users[peer], users[ID] = womb, tWomb
+										res.Update(tWomb)
+										wombRes.Update(womb)
 
 										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
 										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
@@ -536,14 +572,17 @@ func main() {
 				if isInUsers {
 					if womb.Money >= 256 {
 						if _, ok := womb.Titles[2]; !ok {
-							womb.Titles[2] = titles[2]
+							titleRes := titles.Find("{\"_id\":2}")
+							qwessTitle := Title{}
+							titleRes.One(&qwessTitle)
+							womb.Titles[2] = qwessTitle
 							womb.Money -= 256
-							res.Update(womb)
+							wombRes.Update(womb)
 
 							sendMsg("Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2", peer, client)
 						} else {
 							womb.Money -= 256
-							res.Update(womb)
+							wombRes.Update(womb)
 
 							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!", peer, client)
 						}
