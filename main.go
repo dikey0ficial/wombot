@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -9,94 +10,67 @@ import (
 	"github.com/go-vk-api/vk"
 	lp "github.com/go-vk-api/vk/longpoll/user"
 	jsoniter "github.com/json-iterator/go"
-	db "github.com/upper/db/v4"
-	"github.com/upper/db/v4/adapter/mongo"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// MongoConfig нужен для настроек монги
-type MongoConfig struct {
-	Database string `json:"db"`
-	Host     string `json:"host"`
-	Login    string `json:"login"`
-	Password string `json:"pwrd"`
-}
-
 // Config нужен для настроек
 type Config struct {
-	Token string      `json:"token"`
-	Mongo MongoConfig `json:"mongo"`
+	Token    string `json:"vk_token,omitempty"`
+	MongoURL string `json:"mongo_url,omitempty"`
 }
 
 // Title — описание титула
 type Title struct {
-	Name string `db:"name"`
-	Desc string `db:"desc"`
+	Name string `bson:"name,omitempty"`
+	Desc string `bson:"desc"`
 }
 
 // User — описание пользователя
 type User struct { // параметры юзера
-	ID     int64            `db:"_id"`
-	Name   string           `db:"name"`
-	XP     uint32           `db:"xp"`
-	Health uint32           `db:"health"`
-	Force  uint32           `db:"force"`
-	Money  uint64           `db:"money"`
-	Titles map[uint16]Title `db:"titles"`
-	Subs   map[string]int64 `db:"subs"`
+	ID     int64            `bson:"_id,omitempty"`
+	Name   string           `bson:"name,omitempty"`
+	XP     uint32           `bson:"xp"`
+	Health uint32           `bson:"health"`
+	Force  uint32           `bson:"force"`
+	Money  uint64           `bson:"money"`
+	Titles []uint16         `bson:"titles"`
+	Subs   map[string]int64 `bson:"subs"`
 }
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func checkerr(err error) {
 	if err != nil && err.Error() != "EOF" {
-		log.Println("ERROR\n\n", err)
+		log.Panic("ERROR\n\n", err)
 	}
 }
 
-func loadConfig() (Config, error) {
+func checkPanErr(err error) {
+	if err != nil && err.Error() != "EOF" {
+		panic(err)
+	}
+}
+
+func loadConfig() Config {
 	file, err := os.Open("config.json")
-	if err != nil {
-		return Config{}, err
+	if err != nil && err.Error() != "EOF" {
+		checkerr(err)
+		return Config{}
 	}
 	defer file.Close()
-	result := Config{}
+	var result = Config{}
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&result)
-	file.Close()
-	return result, err
+	checkPanErr(err)
+	return result
 }
 
-func initSess() db.Session {
-	conf, err := loadConfig()
-	checkerr(err)
-	sess, err := mongo.Open(mongo.ConnectionURL{
-		Database: conf.Mongo.Database,
-		Host:     conf.Mongo.Host,
-		User:     conf.Mongo.Login,
-		Password: conf.Mongo.Password,
-	})
-	checkerr(err)
-	return sess
-}
-
-var sess = initSess()
-
-var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
-
-var users db.Collection
-
-func loadUsers() {
-	users = sess.Collection("users")
-}
-
-var titles db.Collection
-
-func loadTitles() {
-	titles = sess.Collection("titles")
-}
+var conf = loadConfig()
 
 func isInList(str string, list []string) bool {
 	for _, elem := range list {
@@ -105,6 +79,32 @@ func isInList(str string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func hasTitle(i uint16, list []uint16) bool {
+	for _, elem := range list {
+		if i == elem {
+			return true
+		}
+	}
+	return false
+}
+
+func toDoc(v interface{}) (doc *bson.D, err error) {
+	data, err := bson.Marshal(v)
+	if err != nil {
+		return
+	}
+
+	err = bson.Unmarshal(data, &doc)
+	return
+}
+
+func docUpd(v User, filter bson.D, col mongo.Collection) {
+	doc, err := toDoc(v)
+	checkerr(err)
+	ctx := context.TODO()
+	_, err = col.UpdateOne(ctx, filter, bson.M{"$set": doc})
 }
 
 func sendMsg(message string, peer int64, client *vk.Client) {
@@ -117,23 +117,44 @@ func sendMsg(message string, peer int64, client *vk.Client) {
 	checkerr(err)
 }
 
-func main() {
-	defer sess.Close()
-	conf, err := loadConfig()
-	checkerr(err)
+var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
 
-	loadUsers()
-	loadTitles()
+func main() {
+	ctx := context.TODO()
+
+	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
+	checkPanErr(err)
+	err = mongoClient.Connect(ctx)
+	checkPanErr(err)
+	defer mongoClient.Disconnect(ctx)
+
+	db := *(mongoClient.Database("wombot"))
+
+	users := *(db.Collection("users"))
+
+	titles := []Title{}
+
+	titlesC := *(db.Collection("titles"))
+	cur, err := titlesC.Find(ctx, bson.D{})
+	defer cur.Close(ctx)
+	checkerr(err)
+	for cur.Next(ctx) {
+		var nextOne Title
+		err := cur.Decode(&nextOne)
+		checkPanErr(err)
+		titles = append(titles, nextOne)
+	}
+	cur.Close(ctx)
 
 	client, err := vk.NewClientWithOptions(
 		vk.WithToken(conf.Token),
 	)
-	checkerr(err)
+	checkPanErr(err)
 
 	longpoll, err := lp.NewWithOptions(client, lp.WithMode(lp.ReceiveAttachments))
-	checkerr(err)
+	checkPanErr(err)
 	stream, err := longpoll.GetUpdatesStream(0)
-	checkerr(err)
+	checkPanErr(err)
 
 	log.Println("Start!")
 
@@ -145,14 +166,18 @@ func main() {
 			}
 			peer, txt := data.PeerID, data.Text
 
-			womb := User{}
-			wombRes := users.Find(fmt.Sprintf(`{"_id":%d}}`, peer))
+			users = *(db.Collection("users"))
 
-			rCount, err := wombRes.Count()
+			womb := User{}
+
+			wFil := bson.D{{"_id", peer}}
+
+			rCount, err := users.CountDocuments(ctx, wFil)
+
 			checkerr(err)
 			isInUsers := rCount != 0
 			if isInUsers {
-				err = wombRes.One(&womb)
+				err = users.FindOne(ctx, wFil).Decode(&womb)
 				checkerr(err)
 			}
 
@@ -168,22 +193,24 @@ func main() {
 				if isInUsers {
 					sendMsg("У тебя как бы уже есть вомбат лолкек. Если хочешь от него избавиться, то напиши `приготовить шашлык`", peer, client)
 				} else {
+					rand.Seed(peer)
 					newWomb := User{
+						ID:     peer,
 						Name:   standartNicknames[rand.Intn(len(standartNicknames))],
 						XP:     0,
 						Health: 5,
 						Force:  2,
 						Money:  10,
-						Titles: map[uint16]Title{},
+						Titles: []uint16{},
 						Subs:   map[string]int64{},
 					}
-					_, err = users.Insert(&newWomb)
+					_, err = users.InsertOne(ctx, &newWomb)
 					checkerr(err)
 
-					sendMsg(fmt.Sprintf("Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты", womb.Name), peer, client)
+					sendMsg(fmt.Sprintf("Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты", newWomb.Name), peer, client)
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "devtools") {
-				if _, ok := womb.Titles[0]; ok {
+				if hasTitle(0, womb.Titles) {
 					cmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "devtools"))
 					if strings.HasPrefix(cmd, "set money") {
 						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money"))
@@ -200,22 +227,22 @@ func main() {
 						switch arg {
 						case "force":
 							womb.Force = 2
-							wombRes.Update(womb)
+							docUpd(womb, wFil, users)
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "health":
 							womb.Health = 5
-							wombRes.Update(womb)
+							docUpd(womb, wFil, users)
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "xp":
 							womb.XP = 0
-							wombRes.Update(womb)
+							docUpd(womb, wFil, users)
 
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "all":
 							womb.Force = 2
 							womb.Health = 5
 							womb.XP = 0
-							wombRes.Update(womb)
+							docUpd(womb, wFil, users)
 
 							sendMsg("Операция произведена успешно!", peer, client)
 						default:
@@ -225,16 +252,14 @@ func main() {
 						sendMsg("https://vk.com/@wombat_bot-devtools", peer, client)
 					}
 				} else if strings.TrimSpace(txt) == "devtools on" {
-					newTitle := Title{}
-					titles.Find("{\"_id\":0}").One(&newTitle)
-					womb.Titles[0] = newTitle
-					wombRes.Update(womb)
+					womb.Titles = append(womb.Titles, 0)
+					docUpd(womb, wFil, users)
 					sendMsg("Выдан титул \"Вомботестер\" (ID: 0)", peer, client)
 				}
 			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
 				if isInUsers {
-					if _, ok := womb.Titles[1]; !ok {
-						err = wombRes.Delete()
+					if !(hasTitle(1, womb.Titles)) {
+						_, err = users.DeleteOne(ctx, wFil)
 						checkerr(err)
 						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, client)
 					} else {
@@ -252,7 +277,7 @@ func main() {
 						} else if name != "" {
 							womb.Money -= 3
 							womb.Name = name
-							wombRes.Update(womb)
+							docUpd(womb, wFil, users)
 
 							sendMsg(fmt.Sprintf("Теперь вашего вомбата зовут %s. С вашего счёта сняли 3 шиша", name), peer, client)
 						} else {
@@ -271,7 +296,7 @@ func main() {
 					if womb.Money >= 5 {
 						womb.Money -= 5
 						womb.Health++
-						wombRes.Update(womb)
+						docUpd(womb, wFil, users)
 
 						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, client)
 					} else {
@@ -285,7 +310,7 @@ func main() {
 					if womb.Money >= 3 {
 						womb.Money -= 3
 						womb.Force++
-						wombRes.Update(womb)
+						docUpd(womb, wFil, users)
 
 						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, client)
 					} else {
@@ -299,8 +324,7 @@ func main() {
 					if womb.Money >= 1 {
 						womb.Money--
 						rand.Seed(time.Now().UnixNano())
-						_, ok := womb.Titles[2]
-						if ch := rand.Int(); ch%2 == 0 || ok && (ch%2 == 0 || ch%3 == 0) {
+						if ch := rand.Int(); ch%2 == 0 || hasTitle(2, womb.Titles) && (ch%2 == 0 || ch%3 == 0) {
 							rand.Seed(time.Now().UnixNano())
 							win := rand.Intn(9) + 1
 							womb.Money += uint64(win)
@@ -308,7 +332,7 @@ func main() {
 						} else {
 							sendMsg("Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли", peer, client)
 						}
-						wombRes.Update(womb)
+						docUpd(womb, wFil, users)
 
 					} else {
 						sendMsg("Охранники тебя прогнали; они требуют шиш за проход, а у тебя и шиша-то нет", peer, client)
@@ -323,12 +347,11 @@ func main() {
 				} else if i, err := strconv.ParseInt(strID, 10, 64); err == nil {
 					checkerr(err)
 					ID := uint16(i)
-					titleRes := titles.Find(fmt.Sprintf("{\"_id\":%d}", ID))
-					rCount, err = titleRes.Count()
+					rCount, err := titlesC.CountDocuments(ctx, bson.D{{"_id", ID}})
 					checkerr(err)
 					if rCount != 0 {
 						elem := Title{}
-						titleRes.One(&elem)
+						err = titlesC.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&elem)
 						sendMsg(fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), peer, client)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), peer, client)
@@ -356,11 +379,11 @@ func main() {
 							sendMsg("Ошибка: алиас не должен быть числом", peer, client)
 						} else {
 							if elem, ok := womb.Subs[args[1]]; !ok {
-								rCount, err = users.Find(fmt.Sprintf("{\"_id\":%d}", ID)).Count()
+								rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
 								checkerr(err)
 								if rCount != 0 {
 									womb.Subs[args[1]] = ID
-									wombRes.Update(womb)
+									docUpd(womb, wFil, users)
 
 									sendMsg(fmt.Sprintf("Вомбат с ID %d добавлен в ваши подписки", ID), peer, client)
 								} else {
@@ -380,7 +403,7 @@ func main() {
 				alias := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "отписаться"))
 				if _, ok := womb.Subs[alias]; ok {
 					delete(womb.Subs, alias)
-					wombRes.Update(womb)
+					docUpd(womb, wFil, users)
 
 					sendMsg(fmt.Sprintf("Вы отписались от пользователя с алиасом %s", alias), peer, client)
 				} else {
@@ -390,12 +413,12 @@ func main() {
 				strSubs := "Вот список твоих подписок:"
 				if len(womb.Subs) != 0 {
 					for alias, id := range womb.Subs {
-						res := users.Find(fmt.Sprintf("{\"_id\":%d}", id))
-						rCount, err = res.Count()
+						rCount, err = users.CountDocuments(ctx, bson.D{{"_id", id}})
 						checkerr(err)
 						if rCount != 0 {
 							tWomb := User{}
-							res.One(&tWomb)
+							err = users.FindOne(ctx, bson.D{{"_id", id}}).Decode(&tWomb)
+							checkerr(err)
 							strSubs += fmt.Sprintf("\n %s | ID: %d | Алиас: %s", tWomb.Name, id, alias)
 						} else {
 							strSubs += fmt.Sprintf("\n Ошибка: пользователь по алиасу `%s` не найден", alias)
@@ -411,18 +434,23 @@ func main() {
 					continue
 				}
 				for alias, ID := range womb.Subs {
-					res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
-					rCount, err = res.Count()
+					rCount, err := users.CountDocuments(ctx, bson.D{{"_id", ID}})
 					checkerr(err)
 					if rCount != 0 {
 						tWomb := User{}
-						res.One(&tWomb)
+						err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
+						checkerr(err)
 						strTitles := ""
-						for id, elem := range tWomb.Titles {
-							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
-						}
-						strTitles = strings.TrimSuffix(strTitles, " | ")
-						if strings.TrimSpace(strTitles) == "" {
+						tCount := len(tWomb.Titles)
+						if tCount != 0 {
+							for id := range tWomb.Titles {
+								elem := Title{}
+								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
+								checkerr(err)
+								strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+							}
+							strTitles = strings.TrimSuffix(strTitles, " | ")
+						} else {
 							strTitles = "нет"
 						}
 						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, alias, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
@@ -436,11 +464,16 @@ func main() {
 				if strID == "" {
 					if isInUsers {
 						strTitles := ""
-						for id, elem := range womb.Titles {
-							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
-						}
-						strTitles = strings.TrimSuffix(strTitles, " | ")
-						if strings.TrimSpace(strTitles) == "" {
+						tCount := len(womb.Titles)
+						if tCount != 0 {
+							for id := range womb.Titles {
+								elem := Title{}
+								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
+								checkerr(err)
+								strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+							}
+							strTitles = strings.TrimSuffix(strTitles, " | ")
+						} else {
 							strTitles = "нет"
 						}
 						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", womb.Name, peer, strTitles, womb.XP, womb.Health, womb.Force, womb.Money), peer, client)
@@ -448,18 +481,23 @@ func main() {
 						sendMsg("У вас ещё нет вомбата...", peer, client)
 					}
 				} else if ID, err := strconv.ParseInt(strID, 10, 64); err == nil {
-					res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
-					rCount, err = res.Count()
+					rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
 					checkerr(err)
 					if rCount != 0 {
 						tWomb := User{}
-						res.One(&tWomb)
+						err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
+						checkerr(err)
 						strTitles := ""
-						for id, elem := range tWomb.Titles {
-							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
-						}
-						strTitles = strings.TrimSuffix(strTitles, " | ")
-						if strings.TrimSpace(strTitles) == "" {
+						tCount := len(tWomb.Titles)
+						if tCount != 0 {
+							for id := range tWomb.Titles {
+								elem := Title{}
+								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
+								checkerr(err)
+								strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+							}
+							strTitles = strings.TrimSuffix(strTitles, " | ")
+						} else {
 							strTitles = "нет"
 						}
 						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
@@ -467,18 +505,23 @@ func main() {
 						sendMsg(fmt.Sprintf("Ошибка: игрока с ID %d не найдено", ID), peer, client)
 					}
 				} else if _, ok := womb.Subs[strID]; ok {
-					res := users.Find(fmt.Sprintf("{\"_id\":%d}", womb.Subs[strID]))
-					rCount, err = res.Count()
+					rCount, err = users.CountDocuments(ctx, bson.D{{"_id", womb.Subs[strID]}})
 					checkerr(err)
 					if rCount != 0 {
 						tWomb := User{}
-						res.One(&tWomb)
+						err = users.FindOne(ctx, bson.D{{"_id", womb.Subs[strID]}}).Decode(&tWomb)
+						checkerr(err)
 						strTitles := ""
-						for id, elem := range tWomb.Titles {
-							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
-						}
-						strTitles = strings.TrimSuffix(strTitles, " | ")
-						if strings.TrimSpace(strTitles) == "" {
+						tCount := len(tWomb.Titles)
+						if tCount != 0 {
+							for id := range tWomb.Titles {
+								elem := Title{}
+								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
+								checkerr(err)
+								strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
+							}
+							strTitles = strings.TrimSuffix(strTitles, " | ")
+						} else {
 							strTitles = "нет"
 						}
 						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
@@ -500,16 +543,16 @@ func main() {
 							if womb.Money > amount {
 								if amount != 0 {
 									if ID != peer {
-										res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
-										rCount, err = res.Count()
+										rCount, err := users.CountDocuments(ctx, bson.D{{"_id", ID}})
 										checkerr(err)
 										if rCount != 0 {
 											tWomb := User{}
-											res.One(&tWomb)
+											err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
+											checkerr(err)
 											womb.Money -= amount
 											tWomb.Money += amount
-											res.Update(tWomb)
-											wombRes.Update(womb)
+											docUpd(tWomb, bson.D{{"_id", ID}}, users)
+											docUpd(womb, wFil, users)
 
 											sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
 											sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
@@ -532,16 +575,18 @@ func main() {
 										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
 										continue
 									}
-									res := users.Find(fmt.Sprintf("{\"_id\":%d}", ID))
-									rCount, err = res.Count()
+									rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
 									checkerr(err)
 									if rCount != 0 {
 										tWomb := User{}
-										res.One(&tWomb)
+										err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
+										checkerr(err)
+										log.Println(womb, tWomb)
 										womb.Money -= amount
 										tWomb.Money += amount
-										res.Update(tWomb)
-										wombRes.Update(womb)
+										log.Println(womb, tWomb)
+										docUpd(tWomb, bson.D{{"_id", ID}}, users)
+										docUpd(womb, wFil, users)
 
 										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
 										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
@@ -566,24 +611,33 @@ func main() {
 					}
 				}
 			} else if txt == "обновить данные" && peer == 415610367 {
-				loadUsers()
+				users = *(db.Collection("users"))
+				titlesC := *(db.Collection("titles"))
+				cur, err := titlesC.Find(ctx, bson.D{})
+				defer cur.Close(ctx)
+				checkerr(err)
+				for cur.Next(ctx) {
+					var nextOne Title
+					err := cur.Decode(&nextOne)
+					checkPanErr(err)
+					titles = append(titles, nextOne)
+				}
+				cur.Close(ctx)
 				sendMsg("Успешно обновлено!", peer, client)
 			} else if isInList(txt, []string{"купить квес", "купить квесс", "купить qwess", "попить квес", "попить квесс", "попить qwess"}) {
 				if isInUsers {
 					if womb.Money >= 256 {
-						if _, ok := womb.Titles[2]; !ok {
-							titleRes := titles.Find("{\"_id\":2}")
-							qwessTitle := Title{}
-							titleRes.One(&qwessTitle)
-							womb.Titles[2] = qwessTitle
+						log.Println(hasTitle(2, womb.Titles))
+						if !(hasTitle(2, womb.Titles)) {
+							log.Println(womb.Titles)
+							womb.Titles = append(womb.Titles, 2)
+							log.Println(womb.Titles)
 							womb.Money -= 256
-							wombRes.Update(womb)
-
+							docUpd(womb, wFil, users)
 							sendMsg("Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2", peer, client)
 						} else {
 							womb.Money -= 256
-							wombRes.Update(womb)
-
+							docUpd(womb, wFil, users)
 							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!", peer, client)
 						}
 					} else {

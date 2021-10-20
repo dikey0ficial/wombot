@@ -7,4 +7,5 @@ require (
 	github.com/json-iterator/go v1.1.11
 	github.com/stretchr/testify v1.6.1 // indirect
 	github.com/upper/db/v4 v4.2.1
+	go.mongodb.org/mongo-driver v1.7.3
 )
