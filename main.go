@@ -84,6 +84,7 @@ func isInList(str string, list []string) bool {
 func hasTitle(i uint16, list []uint16) bool {
 	for _, elem := range list {
 		if i == elem {
+			log.Println(elem)
 			return true
 		}
 	}
@@ -217,7 +218,7 @@ func main() {
 						if i, err := strconv.ParseUint(strNewMoney, 10, 64); err == nil {
 							checkerr(err)
 							womb.Money = i
-
+							docUpd(womb, wFil, users)
 							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей на счету: %d", womb.Money), peer, client)
 						} else {
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools set money {кол-во шишей}`", peer, client)
@@ -236,14 +237,12 @@ func main() {
 						case "xp":
 							womb.XP = 0
 							docUpd(womb, wFil, users)
-
 							sendMsg("Операция произведена успешно!", peer, client)
 						case "all":
 							womb.Force = 2
 							womb.Health = 5
 							womb.XP = 0
 							docUpd(womb, wFil, users)
-
 							sendMsg("Операция произведена успешно!", peer, client)
 						default:
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools reset [force/health/xp/all]`", peer, client)
@@ -443,7 +442,7 @@ func main() {
 						strTitles := ""
 						tCount := len(tWomb.Titles)
 						if tCount != 0 {
-							for id := range tWomb.Titles {
+							for _, id := range tWomb.Titles {
 								elem := Title{}
 								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
 								checkerr(err)
@@ -466,7 +465,7 @@ func main() {
 						strTitles := ""
 						tCount := len(womb.Titles)
 						if tCount != 0 {
-							for id := range womb.Titles {
+							for _, id := range womb.Titles {
 								elem := Title{}
 								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
 								checkerr(err)
@@ -490,7 +489,7 @@ func main() {
 						strTitles := ""
 						tCount := len(tWomb.Titles)
 						if tCount != 0 {
-							for id := range tWomb.Titles {
+							for _, id := range tWomb.Titles {
 								elem := Title{}
 								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
 								checkerr(err)
@@ -514,7 +513,7 @@ func main() {
 						strTitles := ""
 						tCount := len(tWomb.Titles)
 						if tCount != 0 {
-							for id := range tWomb.Titles {
+							for _, id := range tWomb.Titles {
 								elem := Title{}
 								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
 								checkerr(err)
@@ -524,7 +523,7 @@ func main() {
 						} else {
 							strTitles = "нет"
 						}
-						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
+						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, womb.Subs[strID], strID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, client)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: неправильный алиас `%s` или не найден пользователь с ID %d. Обратитесь к @dikey_oficial, если такой вомбат есть", strID, womb.Subs[strID]), peer, client)
 					}
