@@ -26,8 +26,8 @@ type Config struct {
 
 // Title — описание титула
 type Title struct {
-	Name string `bson:"name,omitempty"`
-	Desc string `bson:"desc"`
+	Name string `bson:"name"`
+	Desc string `bson:"desc,omitempty"`
 }
 
 // User — описание пользователя
@@ -293,11 +293,14 @@ func main() {
 			} else if isInList(txt, []string{"купить здоровье", "прокачка здоровья", "прокачать здоровье"}) {
 				if isInUsers {
 					if womb.Money >= 5 {
-						womb.Money -= 5
-						womb.Health++
-						docUpd(womb, wFil, users)
-
-						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, client)
+						if uint64(womb.Health+1) < 2^32 {
+							womb.Money -= 5
+							womb.Health++
+							docUpd(womb, wFil, users)
+							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, client)
+						} else {
+							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey_oficial", peer, client)
+						}
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 здоровье = 5 шишей", peer, client)
 					}
@@ -307,11 +310,14 @@ func main() {
 			} else if isInList(txt, []string{"купить мощь", "прокачка мощи", "прокачка силы", "прокачать мощь", "прокачать силу"}) {
 				if isInUsers {
 					if womb.Money >= 3 {
-						womb.Money -= 3
-						womb.Force++
-						docUpd(womb, wFil, users)
-
-						sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, client)
+						if uint64(womb.Force+1) < 2^32 {
+							womb.Money -= 3
+							womb.Force++
+							docUpd(womb, wFil, users)
+							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, client)
+						} else {
+							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey_oficial", peer, client)
+						}
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 мощь = 3 шиша", peer, client)
 					}
@@ -393,7 +399,7 @@ func main() {
 							}
 						}
 					} else {
-						sendMsg(fmt.Sprintf("Ошибка: `%s` не является числом", args[0]), peer, client)
+						sendMsg(fmt.Sprintf("Ошибка: `%s` не является целым числом или превышает 2^63", args[0]), peer, client)
 					}
 				} else {
 					sendMsg("Ошибка: слишком много аргументов. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]", peer, client)
@@ -538,68 +544,41 @@ func main() {
 					sendMsg("Ошибка: слишком много аргументов. Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`", peer, client)
 				} else {
 					if amount, err := strconv.ParseUint(args[0], 10, 64); err == nil {
-						if ID, err := strconv.ParseInt(args[1], 10, 64); err == nil {
-							if womb.Money > amount {
-								if amount != 0 {
-									if ID != peer {
-										rCount, err := users.CountDocuments(ctx, bson.D{{"_id", ID}})
-										checkerr(err)
-										if rCount != 0 {
-											tWomb := User{}
-											err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
-											checkerr(err)
-											womb.Money -= amount
-											tWomb.Money += amount
-											docUpd(tWomb, bson.D{{"_id", ID}}, users)
-											docUpd(womb, wFil, users)
-
-											sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
-											sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
-										} else {
-											sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
-										}
-									} else {
-										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
-									}
-								} else {
-									sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
-								}
-							} else {
-								sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)", amount, womb.Money), peer, client)
+						var ID int64
+						if ID, err = strconv.ParseInt(args[1], 10, 64); err != nil {
+							var ok bool
+							if ID, ok = womb.Subs[args[1]]; !ok {
+								sendMsg(fmt.Sprintf("Ошибка: алиаса %s не обнаружено", args[1]), peer, client)
+								continue
 							}
-						} else if ID, ok := womb.Subs[args[1]]; ok {
-							if womb.Money > amount {
-								if amount != 0 {
-									if ID == peer {
-										sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
-										continue
-									}
-									rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
+						}
+						if womb.Money > amount {
+							if amount != 0 {
+								if ID == peer {
+									sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, client)
+									continue
+								}
+								rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
+								checkerr(err)
+								if rCount != 0 {
+									tWomb := User{}
+									err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
 									checkerr(err)
-									if rCount != 0 {
-										tWomb := User{}
-										err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
-										checkerr(err)
-										log.Println(womb, tWomb)
-										womb.Money -= amount
-										tWomb.Money += amount
-										log.Println(womb, tWomb)
-										docUpd(tWomb, bson.D{{"_id", ID}}, users)
-										docUpd(womb, wFil, users)
-
-										sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
-										sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
-									} else {
-										sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
-									}
+									womb.Money -= amount
+									tWomb.Money += amount
+									log.Println(womb, tWomb)
+									docUpd(tWomb, bson.D{{"_id", ID}}, users)
+									docUpd(womb, wFil, users)
+									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, client)
+									sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, client)
 								} else {
-									sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
+									sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, client)
 								}
 							} else {
-								sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)", amount, womb.Money), peer, client)
+								sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, client)
 							}
 						} else {
-							sendMsg(fmt.Sprintf("Ошибка: алиас `%s` не обнаружено", args[1]), peer, client)
+							sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)", amount, womb.Money), peer, client)
 						}
 					} else {
 						if _, err := strconv.ParseInt(args[0], 10, 64); err == nil {
@@ -626,7 +605,6 @@ func main() {
 			} else if isInList(txt, []string{"купить квес", "купить квесс", "купить qwess", "попить квес", "попить квесс", "попить qwess"}) {
 				if isInUsers {
 					if womb.Money >= 256 {
-						log.Println(hasTitle(2, womb.Titles))
 						if !(hasTitle(2, womb.Titles)) {
 							log.Println(womb.Titles)
 							womb.Titles = append(womb.Titles, 2)
