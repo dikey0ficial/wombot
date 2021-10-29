@@ -118,7 +118,6 @@ func docUpd(v User, filter bson.D, col mongo.Collection) {
 
 func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
-	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
 	checkerr(err)
 	return mess.MessageID
@@ -127,7 +126,6 @@ func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
-	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
 	checkerr(err)
 	return mess.MessageID
