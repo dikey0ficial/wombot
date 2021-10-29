@@ -116,9 +116,21 @@ func docUpd(v User, filter bson.D, col mongo.Collection) {
 	_, err = col.UpdateOne(ctx, filter, bson.M{"$set": doc})
 }
 
-func sendMsg(message string, chatID int64, bot *tg.BotAPI) {
+func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
-	bot.Send(msg)
+	msg.ParseMode = "markdown"
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
+func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewMessage(chatID, message)
+	msg.ReplyToMessageID = replyID
+	msg.ParseMode = "markdown"
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
 }
 
 func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
@@ -174,7 +186,8 @@ func main() {
 		}
 		if update.Message.Chat.ID != int64(update.Message.From.ID) {
 			go func(update tg.Update, titles []Title, titlesC mongo.Collection, bot *tg.BotAPI) {
-				peer, txt, from := update.Message.Chat.ID, update.Message.Text, update.Message.From.ID
+				peer, from := update.Message.Chat.ID, update.Message.From.ID
+				txt, messID := update.Message.Text, update.Message.MessageID
 				users = *(db.Collection("users"))
 
 				womb := User{}
@@ -193,34 +206,34 @@ func main() {
 					var (
 						ID    int64
 						tWomb User
-						ok    bool
+						ok    bool = true
 					)
 					if strID == "" {
 						if isInUsers {
 							ID = int64(from)
 							tWomb = womb
 						} else {
-							sendMsg("У вас нет вомбата", peer, bot)
+							replyToMsg(messID, "У вас нет вомбата", peer, bot)
 							return
 						}
 					} else if ID, err = strconv.ParseInt(strID, 10, 64); err == nil {
 						rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
 						checkerr(err)
 						if rCount == 0 {
-							sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не существует", ID), peer, bot)
+							replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с ID %d не существует", ID), peer, bot)
 							return
 						}
 						err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
 						checkerr(err)
 					} else if ID, ok = womb.Subs[strID]; ok {
-						rCount, err = users.CountDocuments(ctx, bson.D{{"_id", tWomb.Subs[strID]}})
+						err = users.FindOne(ctx, bson.D{{"_id", womb.Subs[strID]}}).Decode(&tWomb)
 						checkerr(err)
-						if rCount == 0 {
-							sendMsg(fmt.Sprintf("Ошибка: вомбата с алиасом %s на найдено", strID), peer, bot)
-							return
-						}
+					} else if !ok {
+						replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
+						return
 					} else {
-						sendMsg("Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey_oficial\n\nabout womb: else", peer, bot)
+						replyToMsg(messID, "Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial\n\nabout womb: else", peer, bot)
+						return
 					}
 					strTitles := ""
 					tCount := len(tWomb.Titles)
@@ -235,22 +248,46 @@ func main() {
 					} else {
 						strTitles = "нет"
 					}
-					sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+					replyToMsg(messID, fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
 				} else if strings.HasPrefix(strings.ToLower(txt), "хрю") {
-					sendMsg("АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
-				} else if txt == "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА" {
-					time.Sleep(5 * time.Second)
-					log.Println("свинагрессия удалена")
-					delMsg(update.Message.MessageID, peer, bot)
+					mID := replyToMsg(messID, "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
+					time.Sleep(2 * time.Second)
+					delMsg(mID, peer, bot)
 				} else if isInList(txt, []string{"помощь", "хелп", "help", "команды", "/help", "/help@wombatobot"}) {
-					sendMsg("https://telegra.ph/Pomoshch-10-28", peer, bot)
+					replyToMsg(messID, "https://telegra.ph/Pomoshch-10-28", peer, bot)
+				} else if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start", "привет"}) {
+					replyToMsg(messID, "В групповые чаты писать вомботу НЕ НАДО, он сделан для лс! Пишите в лс: @wombatobot", peer, bot)
+				} else if strings.HasPrefix(strings.ToLower(txt), "о титуле") {
+					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле"))
+					if strID == "" {
+						replyToMsg(messID, "Ошибка: пустой ID титула", peer, bot)
+					} else if i, err := strconv.ParseInt(strID, 10, 64); err == nil {
+						checkerr(err)
+						ID := uint16(i)
+						rCount, err := titlesC.CountDocuments(ctx, bson.D{{"_id", ID}})
+						checkerr(err)
+						if rCount != 0 {
+							elem := Title{}
+							err = titlesC.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&elem)
+							replyToMsg(messID, fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), peer, bot)
+						} else {
+							replyToMsg(messID, fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), peer, bot)
+						}
+					} else {
+						sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `о титуле {ID титула}`", peer, bot)
+					}
+				} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
+					replyToMsg(messID, "https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
 				}
 			}(update, titles, titlesC, bot)
 			continue
 		}
 		go func(update tg.Update, titles []Title, titlesC mongo.Collection, bot *tg.BotAPI) {
-			peer, txt, from := update.Message.Chat.ID, update.Message.Text, update.Message.From.ID
-			from += 0 // Compiler thinks this is using of from
+			peer, from := update.Message.Chat.ID, update.Message.From.ID
+			txt, messID := update.Message.Text, update.Message.MessageID
+			if from == messID {
+				log.Println("AAAAAAAAAAAAAA")
+			}
 			users = *(db.Collection("users"))
 
 			womb := User{}
@@ -345,7 +382,7 @@ func main() {
 						checkerr(err)
 						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, bot)
 					} else {
-						sendMsg("Ошибка: вы лишены права уничтожать вомбата; обратитксь к @dikey_oficial за разрешением", peer, bot)
+						sendMsg("Ошибка: вы лишены права уничтожать вомбата; обратитксь к @dikey0ficial за разрешением", peer, bot)
 					}
 				} else {
 					sendMsg("Но у вас нет вомбата...", peer, bot)
@@ -382,7 +419,7 @@ func main() {
 							docUpd(womb, wFil, users)
 							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, bot)
 						} else {
-							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey_oficial", peer, bot)
+							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial", peer, bot)
 						}
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 здоровье = 5 шишей", peer, bot)
@@ -399,7 +436,7 @@ func main() {
 							docUpd(womb, wFil, users)
 							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, bot)
 						} else {
-							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey_oficial", peer, bot)
+							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial", peer, bot)
 						}
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 мощь = 3 шиша", peer, bot)
@@ -447,14 +484,6 @@ func main() {
 				} else {
 					sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `о титуле {ID титула}`", peer, bot)
 				}
-				// } else if strings.HasPrefix(strings.ToLower(txt), "рейтинг") {
-				// 	sorting := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "рейтинг"))
-				// 	sortedUsers := users
-				// 	if isInList(sorting, []string{"шиши", "шиш", "деньги", "монеты", "монетки"}) {
-				// 		sort.Sort(ByMoney(sortedUsers))
-
-				// 		}
-				// 	}
 			} else if strings.HasPrefix(strings.ToLower(txt), "подписаться") {
 				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "подписаться")))
 				if len(args) == 0 {
@@ -575,14 +604,14 @@ func main() {
 					err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
 					checkerr(err)
 				} else if ID, ok = womb.Subs[strID]; ok {
-					rCount, err = users.CountDocuments(ctx, bson.D{{"_id", womb.Subs[strID]}})
+					err = users.FindOne(ctx, bson.D{{"_id", womb.Subs[strID]}}).Decode(&tWomb)
 					checkerr(err)
-					if rCount == 0 {
-						sendMsg(fmt.Sprintf("Ошибка: вомбата с алиасом %s на найдено", strID), peer, bot)
-						return
-					}
+				} else if !ok {
+					replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
+					return
 				} else {
-					sendMsg("Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey_oficial\n\nabout womb: else", peer, bot)
+					replyToMsg(messID, "Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial\n\nabout womb: else", peer, bot)
+					return
 				}
 				strTitles := ""
 				tCount := len(tWomb.Titles)
@@ -598,6 +627,8 @@ func main() {
 					strTitles = "нет"
 				}
 				sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
+				sendMsg("https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
 			} else if strings.HasPrefix(strings.ToLower(txt), "перевести шиши") {
 				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "перевести шиши")))
 				if len(args) < 2 {
@@ -628,7 +659,6 @@ func main() {
 									checkerr(err)
 									womb.Money -= amount
 									tWomb.Money += amount
-									log.Println(womb, tWomb)
 									docUpd(tWomb, bson.D{{"_id", ID}}, users)
 									docUpd(womb, wFil, users)
 									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, bot)
@@ -668,9 +698,7 @@ func main() {
 				if isInUsers {
 					if womb.Money >= 256 {
 						if !(hasTitle(2, womb.Titles)) {
-							log.Println(womb.Titles)
 							womb.Titles = append(womb.Titles, 2)
-							log.Println(womb.Titles)
 							womb.Money -= 256
 							docUpd(womb, wFil, users)
 							sendMsg("Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2", peer, bot)
