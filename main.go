@@ -215,7 +215,7 @@ func main() {
 					checkerr(err)
 				}
 
-				log.Println("группа", peer, from, womb.Name, txt)
+				log.Println("группа", peer, from, update.Message.From.UserName, womb.Name, txt)
 				if strings.HasPrefix(strings.ToLower(txt), "о вомбате") {
 					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о вомбате"))
 					var (
@@ -318,7 +318,7 @@ func main() {
 				checkerr(err)
 			}
 
-			log.Println(peer, womb.Name, txt)
+			log.Println(peer, update.Message.From.UserName, womb.Name, txt)
 
 			if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start", "привет"}) {
 				if isInUsers {
