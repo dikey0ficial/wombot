@@ -31,7 +31,7 @@ type Title struct {
 
 // User — описание пользователя
 type User struct { // параметры юзера
-	ID     int64            `bson:"_id,omitempty"`
+	ID     int64            `bson:"_id"`
 	Name   string           `bson:"name,omitempty"`
 	XP     uint32           `bson:"xp"`
 	Health uint32           `bson:"health"`
@@ -123,9 +123,26 @@ func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 	return mess.MessageID
 }
 
+func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewMessage(chatID, message)
+	mess, err := bot.Send(msg)
+	msg.ParseMode = "markdown"
+	checkerr(err)
+	return mess.MessageID
+}
+
 func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
+func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewMessage(chatID, message)
+	msg.ReplyToMessageID = replyID
+	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
 	checkerr(err)
 	return mess.MessageID
@@ -246,7 +263,8 @@ func main() {
 					} else {
 						strTitles = "нет"
 					}
-					replyToMsg(messID, fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+					link := fmt.Sprintf("tg://user?id=%d", ID)
+					replyToMsgMD(messID, fmt.Sprintf("Вомбат  [%s](%s)  (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, link, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
 				} else if strings.HasPrefix(strings.ToLower(txt), "хрю") {
 					mID := replyToMsg(messID, "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
 					time.Sleep(2 * time.Second)
@@ -275,7 +293,7 @@ func main() {
 						sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `о титуле {ID титула}`", peer, bot)
 					}
 				} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
-					replyToMsg(messID, "https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
+					replyToMsgMD(messID, "https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
 				}
 			}(update, titles, titlesC, bot)
 			continue
@@ -389,14 +407,16 @@ func main() {
 				if isInUsers {
 					name := strings.Title(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "поменять имя ")))
 					if womb.Money >= 3 {
-						if isInList(name, []string{"admin", "вoмбoт", "вoмбoт", "вомбoт", "вомбот"}) {
+						if isInList(name, []string{"admin", "вoмбoт", "вoмбoт", "вомбoт", "вомбот", "бот", "bot", "бoт", "bоt"}) {
 							sendMsg("Такие никнеймы заводить нельзя", peer, bot)
 						} else if name != "" {
 							womb.Money -= 3
-							womb.Name = name
+							split := strings.Fields(txt)
+							caseName := strings.Join(split[2:], " ")
+							womb.Name = caseName
 							docUpd(womb, wFil, users)
 
-							sendMsg(fmt.Sprintf("Теперь вашего вомбата зовут %s. С вашего счёта сняли 3 шиша", name), peer, bot)
+							sendMsg(fmt.Sprintf("Теперь вашего вомбата зовут %s. С вашего счёта сняли 3 шиша", caseName), peer, bot)
 						} else {
 							sendMsg("У вас пустое имя...", peer, bot)
 						}
@@ -624,9 +644,9 @@ func main() {
 				} else {
 					strTitles = "нет"
 				}
-				sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+				sendMsgMD(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
-				sendMsg("https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
+				sendMsgMD("https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
 			} else if strings.HasPrefix(strings.ToLower(txt), "перевести шиши") {
 				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "перевести шиши")))
 				if len(args) < 2 {
