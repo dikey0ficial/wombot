@@ -324,7 +324,7 @@ func main() {
 				if isInUsers {
 					sendMsg(fmt.Sprintf("Здравствуйте, %s!", womb.Name), peer, bot)
 				} else {
-					sendMsg("Привет! Для того, чтобы ознакомиться с механикой бота, почитай справку https://telegra.ph/Pomoshch-10-28 (она также доступна по команде /help). Чтобы завести вомбата, напиши `взять вомбата`. Приятной игры!", peer, bot)
+					sendMsg("Привет! \n — Завести вомбата: `взять вомбата`\n — Помощь: https://telegra.ph/Pomoshch-10-28 (/help)\n — Канал бота, где есть нужная инфа: @wombatobot_channel\n Приятной игры!", peer, bot)
 				}
 			} else if isInList(txt, []string{"взять вомбата", "купить вомбата у арабов", "хочу вомбата"}) {
 				if isInUsers {
