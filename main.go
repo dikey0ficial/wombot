@@ -31,30 +31,41 @@ type Title struct {
 
 // User — описание пользователя
 type User struct { // параметры юзера
-	ID     int64            `bson:"_id"`
-	Name   string           `bson:"name,omitempty"`
-	XP     uint32           `bson:"xp"`
-	Health uint32           `bson:"health"`
-	Force  uint32           `bson:"force"`
-	Money  uint64           `bson:"money"`
-	Titles []uint16         `bson:"titles"`
-	Subs   map[string]int64 `bson:"subs"`
+	ID     int64    `bson:"_id"`
+	Name   string   `bson:"name,omitempty"`
+	XP     uint32   `bson:"xp"`
+	Health uint32   `bson:"health"`
+	Force  uint32   `bson:"force"`
+	Money  uint64   `bson:"money"`
+	Titles []uint16 `bson:"titles"`
+	Subs   map[string]int64
 }
 
+// Attack реализует атаку
+type Attack struct {
+	ID   int   `bson:"_id"`
+	From int64 `bson:"from"`
+	To   int64 `bson:"to"`
+}
+
+var ctx = context.TODO()
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
+// checkerr реализует проверку ошибок без паники
 func checkerr(err error) {
 	if err != nil && err.Error() != "EOF" {
 		log.Panic("ERROR\n\n", err)
 	}
 }
 
+// checkPanErr реализует проверку ошибку с паникой
 func checkPanErr(err error) {
 	if err != nil && err.Error() != "EOF" {
 		panic(err)
 	}
 }
 
+// loadConfig нужуен для загрузки конфига до инициализвации требующих его функций
 func loadConfig() Config {
 	file, err := os.Open("config.json")
 	if err != nil && err.Error() != "EOF" {
@@ -71,6 +82,7 @@ func loadConfig() Config {
 
 var conf = loadConfig()
 
+// isInList нужен для проверки сообщений
 func isInList(str string, list []string) bool {
 	for _, elem := range list {
 		if strings.ToLower(str) == strings.ToLower(elem) {
@@ -80,6 +92,7 @@ func isInList(str string, list []string) bool {
 	return false
 }
 
+// isInSubs _
 func isInSubs(sub int64, arr map[string]int64) (bool, string) {
 	for alias, elem := range arr {
 		if sub == elem {
@@ -89,6 +102,7 @@ func isInSubs(sub int64, arr map[string]int64) (bool, string) {
 	return false, ""
 }
 
+// hasTitle _
 func hasTitle(i uint16, list []uint16) bool {
 	for _, elem := range list {
 		if i == elem {
@@ -99,6 +113,7 @@ func hasTitle(i uint16, list []uint16) bool {
 	return false
 }
 
+// toDoc _
 func toDoc(v interface{}) (doc *bson.D, err error) {
 	data, err := bson.Marshal(v)
 	if err != nil {
@@ -109,6 +124,7 @@ func toDoc(v interface{}) (doc *bson.D, err error) {
 	return
 }
 
+// docUpd _
 func docUpd(v User, filter bson.D, col mongo.Collection) {
 	doc, err := toDoc(v)
 	checkerr(err)
@@ -116,6 +132,7 @@ func docUpd(v User, filter bson.D, col mongo.Collection) {
 	_, err = col.UpdateOne(ctx, filter, bson.M{"$set": doc})
 }
 
+// sendMsg отправляет обычное сообщение
 func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	mess, err := bot.Send(msg)
@@ -123,6 +140,7 @@ func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 	return mess.MessageID
 }
 
+// sendMsgMD отправляет сообщение с markdown
 func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	mess, err := bot.Send(msg)
@@ -131,6 +149,7 @@ func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) int {
 	return mess.MessageID
 }
 
+// replyToMsg отвечает обычным сообщением
 func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
@@ -139,6 +158,7 @@ func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	return mess.MessageID
 }
 
+// replyToMsgMD отвечает сообщением с markdown
 func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
@@ -148,6 +168,7 @@ func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int
 	return mess.MessageID
 }
 
+// delMsg удаляет сообщение
 func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
 	deleteMessageConfig := tg.DeleteMessageConfig{
 		ChatID:    chatID,
@@ -157,11 +178,23 @@ func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
 	checkerr(err)
 }
 
-var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка"}
+// isInAttacks возвращает 1) есть ли он в атаках 2) являлся ли он from
+func isInAttacks(id int64, a *mongo.Collection) (bool, bool) {
+	cFrom, err := a.CountDocuments(ctx, bson.D{{"from", id}})
+	checkerr(err)
+	isFrom := cFrom != 0
+	cTo, err := a.CountDocuments(ctx, bson.D{{"to", id}})
+	checkerr(err)
+	isTo := cTo != 0
+	if isFrom || isTo {
+		return true, isFrom
+	}
+	return false, false
+}
+
+var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка", "womboba"}
 
 func main() {
-	ctx := context.TODO()
-
 	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
 	checkPanErr(err)
 	err = mongoClient.Connect(ctx)
@@ -471,7 +504,12 @@ func main() {
 							rand.Seed(time.Now().UnixNano())
 							win := rand.Intn(9) + 1
 							womb.Money += uint64(win)
-							sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас %d", win, womb.Money), peer, bot)
+							if addXP := rand.Intn(512 - 1); addXP < 5 {
+								womb.XP += uint32(addXP)
+								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей, а ещё вам дали %d XP! Теперь у вас %d шишей и %d XP", win, addXP, womb.Money, womb.XP), peer, bot)
+							} else {
+								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас %d", win, womb.Money), peer, bot)
+							}
 						} else {
 							sendMsg("Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли", peer, bot)
 						}
