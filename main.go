@@ -51,17 +51,34 @@ type Attack struct {
 var ctx = context.TODO()
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
+const logpath = "runtime.log"
+
+func initLog() *log.Logger {
+	f, err := os.OpenFile(logpath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	nlog := log.New(f, "", log.Ldate|log.Ltime)
+	go func(f *os.File) {
+		// данный костыль нужен, чтобы файл
+		// не закрывался раньше времени,
+		// но при этом всё же
+		// инициализировать логгер
+		defer f.Close()
+		for {
+			time.Sleep(300 * time.Second)
+		}
+	}(f)
+	return nlog
+}
+
+var rlog = initLog()
+
 // checkerr реализует проверку ошибок без паники
 func checkerr(err error) {
 	if err != nil && err.Error() != "EOF" {
-		log.Panic("ERROR\n\n", err)
-	}
-}
-
-// checkPanErr реализует проверку ошибку с паникой
-func checkPanErr(err error) {
-	if err != nil && err.Error() != "EOF" {
-		panic(err)
+		fmt.Printf("error! %v", err)
+		rlog.Panicf("ERROR %v", err)
 	}
 }
 
@@ -76,7 +93,7 @@ func loadConfig() Config {
 	var result = Config{}
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&result)
-	checkPanErr(err)
+	checkerr(err)
 	return result
 }
 
@@ -106,7 +123,7 @@ func isInSubs(sub int64, arr map[string]int64) (bool, string) {
 func hasTitle(i uint16, list []uint16) bool {
 	for _, elem := range list {
 		if i == elem {
-			log.Println(elem)
+			rlog.Println(elem)
 			return true
 		}
 	}
@@ -178,27 +195,13 @@ func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
 	checkerr(err)
 }
 
-// isInAttacks возвращает 1) есть ли он в атаках 2) являлся ли он from
-func isInAttacks(id int64, a *mongo.Collection) (bool, bool) {
-	cFrom, err := a.CountDocuments(ctx, bson.D{{"from", id}})
-	checkerr(err)
-	isFrom := cFrom != 0
-	cTo, err := a.CountDocuments(ctx, bson.D{{"to", id}})
-	checkerr(err)
-	isTo := cTo != 0
-	if isFrom || isTo {
-		return true, isFrom
-	}
-	return false, false
-}
-
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка", "womboba"}
 
 func main() {
 	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
-	checkPanErr(err)
+	checkerr(err)
 	err = mongoClient.Connect(ctx)
-	checkPanErr(err)
+	checkerr(err)
 	defer mongoClient.Disconnect(ctx)
 
 	db := *(mongoClient.Database("wombot"))
@@ -214,19 +217,19 @@ func main() {
 	for cur.Next(ctx) {
 		var nextOne Title
 		err := cur.Decode(&nextOne)
-		checkPanErr(err)
+		checkerr(err)
 		titles = append(titles, nextOne)
 	}
 	cur.Close(ctx)
 
 	bot, err := tg.NewBotAPI(conf.Token)
-	checkPanErr(err)
+	checkerr(err)
 
 	u := tg.NewUpdate(0)
 	u.Timeout = 1
 	updates, err := bot.GetUpdatesChan(u)
-	checkPanErr(err)
-	log.Println("Start!")
+	checkerr(err)
+	fmt.Println("Start!")
 
 	for update := range updates {
 		if update.Message == nil {
@@ -248,7 +251,7 @@ func main() {
 					checkerr(err)
 				}
 
-				log.Println("группа", peer, from, update.Message.From.UserName, womb.Name, txt)
+				rlog.Printf("(group) message p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
 				if strings.HasPrefix(strings.ToLower(txt), "о вомбате") {
 					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о вомбате"))
 					var (
@@ -335,7 +338,7 @@ func main() {
 			peer, from := update.Message.Chat.ID, update.Message.From.ID
 			txt, messID := update.Message.Text, update.Message.MessageID
 			if from == messID {
-				log.Println("AAAAAAAAAAAAAA")
+				fmt.Println("AAAAAAAAAAAAAA")
 			}
 			users = *(db.Collection("users"))
 
@@ -351,7 +354,7 @@ func main() {
 				checkerr(err)
 			}
 
-			log.Println(peer, update.Message.From.UserName, womb.Name, txt)
+			rlog.Printf("message p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
 
 			if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start", "привет"}) {
 				if isInUsers {
@@ -745,11 +748,13 @@ func main() {
 				for cur.Next(ctx) {
 					var nextOne Title
 					err := cur.Decode(&nextOne)
-					checkPanErr(err)
+					checkerr(err)
 					titles = append(titles, nextOne)
 				}
 				cur.Close(ctx)
 				sendMsg("Успешно обновлено!", peer, bot)
+				rlog.Printf("Data update by %d\n", peer)
+				fmt.Printf("Data update by %d\n", peer)
 			} else if isInList(txt, []string{"купить квес", "купить квесс", "купить qwess", "попить квес", "попить квесс", "попить qwess"}) {
 				if isInUsers {
 					if womb.Money >= 256 {
