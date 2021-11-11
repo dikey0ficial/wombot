@@ -19,8 +19,9 @@ import (
 
 // Config нужен для настроек
 type Config struct {
-	Token    string `json:"tg_token"`
-	MongoURL string `json:"mongo_url"`
+	Token     string `json:"tg_token"`
+	MongoURL  string `json:"mongo_url"`
+	SupChatID int64  `json:"support_chat_id"`
 }
 
 // Title — описание титула
@@ -51,7 +52,10 @@ type Attack struct {
 var ctx = context.TODO()
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
-const logpath = "runtime.log"
+const (
+	logpath = "runtime.log"
+	botID   = 2053985314
+)
 
 func initLog() *log.Logger {
 	f, err := os.OpenFile(logpath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -130,6 +134,17 @@ func hasTitle(i uint16, list []uint16) bool {
 	return false
 }
 
+func isPrefixInList(txt string, list []string) bool {
+	var is bool = false
+	for _, val := range list {
+		is = strings.HasPrefix(strings.ToLower(txt), val)
+		if is {
+			break
+		}
+	}
+	return is
+}
+
 // toDoc _
 func toDoc(v interface{}) (doc *bson.D, err error) {
 	data, err := bson.Marshal(v)
@@ -195,7 +210,8 @@ func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
 	checkerr(err)
 }
 
-var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов", "Вомбабушка", "womboba"}
+var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов",
+	"Вомбабушка", "womboba"}
 
 func main() {
 	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
@@ -235,7 +251,38 @@ func main() {
 		if update.Message == nil {
 			continue
 		}
-		if update.Message.Chat.ID != int64(update.Message.From.ID) {
+		if update.Message.Chat.ID == conf.SupChatID {
+			go func(update tg.Update, bot *tg.BotAPI) {
+				if update.Message.ReplyToMessage == nil || update.Message.ReplyToMessage.From.ID != botID {
+					return
+				}
+				strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
+				omID, err := strconv.ParseInt(strMessID, 10, 64)
+				if err != nil {
+					return
+				}
+				strPeer := strings.Fields(update.Message.ReplyToMessage.Text)[1]
+				peer, err := strconv.ParseInt(strPeer, 10, 64)
+				if err != nil {
+					return
+				}
+				if update.Message.From.UserName != "" {
+					replyToMsgMD(int(omID), fmt.Sprintf(
+						"Ответ от [админа](tg:resolve?domain=%s): \n%s",
+						update.Message.From.UserName,
+						update.Message.Text,
+					), peer, bot)
+				} else {
+					replyToMsgMD(int(omID), fmt.Sprintf(
+						"Ответ от админа (для обращений: %d): \n%s",
+						update.Message.From.ID,
+						update.Message.Text,
+					), peer, bot)
+				}
+
+			}(update, bot)
+			continue
+		} else if update.Message.Chat.ID != int64(update.Message.From.ID) {
 			go func(update tg.Update, titles []Title, titlesC mongo.Collection, bot *tg.BotAPI) {
 				peer, from := update.Message.Chat.ID, update.Message.From.ID
 				txt, messID := update.Message.Text, update.Message.MessageID
@@ -251,7 +298,7 @@ func main() {
 					checkerr(err)
 				}
 
-				rlog.Printf("(group) message p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
+				rlog.Printf("MESSGAE_GROUP p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
 				if strings.HasPrefix(strings.ToLower(txt), "о вомбате") {
 					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о вомбате"))
 					var (
@@ -283,7 +330,10 @@ func main() {
 						replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
 						return
 					} else {
-						replyToMsg(messID, "Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial\n\nabout womb: else", peer, bot)
+						replyToMsg(messID,
+							"Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial\n\nabout womb: else",
+							peer, bot,
+						)
 						return
 					}
 					strTitles := ""
@@ -300,14 +350,18 @@ func main() {
 						strTitles = "нет"
 					}
 					link := fmt.Sprintf("tg://user?id=%d", ID)
-					replyToMsgMD(messID, fmt.Sprintf("Вомбат  [%s](%s)  (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, link, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+					replyToMsgMD(messID, fmt.Sprintf(
+						"Вомбат  [%s](%s)  (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+						tWomb.Name, link, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money),
+						peer, bot,
+					)
 				} else if strings.HasPrefix(strings.ToLower(txt), "хрю") {
 					mID := replyToMsg(messID, "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
 					time.Sleep(2 * time.Second)
 					delMsg(mID, peer, bot)
 				} else if isInList(txt, []string{"помощь", "хелп", "help", "команды", "/help", "/help@wombatobot"}) {
 					replyToMsg(messID, "https://telegra.ph/Pomoshch-10-28", peer, bot)
-				} else if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start", "привет"}) {
+				} else if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start"}) {
 					replyToMsg(messID, "В групповые чаты писать вомботу НЕ НАДО, он сделан для лс! Пишите в лс: @wombatobot", peer, bot)
 				} else if strings.HasPrefix(strings.ToLower(txt), "о титуле") {
 					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле"))
@@ -329,7 +383,24 @@ func main() {
 						sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `о титуле {ID титула}`", peer, bot)
 					}
 				} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
-					replyToMsgMD(messID, "https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
+					replyToMsgMD(messID,
+						"https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**",
+						peer, bot,
+					)
+				} else if isPrefixInList(txt, []string{"/admin", "/админ", "/admin@wombatobot", "одмен!", "/баг", "/bug", "/bug@wombatobot", "/support", "/support@wombatobot"}) {
+					oArgs := strings.Fields(strings.ToLower(txt))
+					if len(oArgs) < 2 {
+						replyToMsg(messID, "Ты чаво... где письмо??", peer, bot)
+					} else {
+						msg := strings.Join(oArgs[1:], " ")
+						sendMsg(fmt.Sprintf(
+							"%d %d \nписьмо из группы %d (@%s) от %d (@%s isInUsers: %v): \n%s",
+							messID, peer, peer, update.Message.Chat.UserName, from,
+							update.Message.From.UserName, isInUsers, msg),
+							conf.SupChatID, bot,
+						)
+						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ\n\nЗЫ: не засоряйте группы!", peer, bot)
+					}
 				}
 			}(update, titles, titlesC, bot)
 			continue
@@ -354,17 +425,21 @@ func main() {
 				checkerr(err)
 			}
 
-			rlog.Printf("message p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
+			rlog.Printf("MESSAGE p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
 
 			if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start", "привет"}) {
 				if isInUsers {
 					sendMsg(fmt.Sprintf("Здравствуйте, %s!", womb.Name), peer, bot)
 				} else {
-					sendMsg("Привет! \n — Завести вомбата: `взять вомбата`\n — Помощь: https://telegra.ph/Pomoshch-10-28 (/help)\n — Канал бота, где есть нужная инфа: @wombatobot_channel\n Приятной игры!", peer, bot)
+					sendMsg("Привет! \n — Завести вомбата: `взять вомбата`\n — Помощь: https://telegra.ph/Pomoshch-10-28 (/help)\n — Канал бота, где есть нужная инфа: @wombatobot_channel\n Приятной игры!",
+						peer, bot,
+					)
 				}
 			} else if isInList(txt, []string{"взять вомбата", "купить вомбата у арабов", "хочу вомбата"}) {
 				if isInUsers {
-					sendMsg("У тебя как бы уже есть вомбат лолкек. Если хочешь от него избавиться, то напиши `приготовить шашлык`", peer, bot)
+					sendMsg("У тебя как бы уже есть вомбат лолкек. Если хочешь от него избавиться, то напиши `приготовить шашлык`",
+						peer, bot,
+					)
 				} else {
 					rand.Seed(peer)
 					newWomb := User{
@@ -380,7 +455,11 @@ func main() {
 					_, err = users.InsertOne(ctx, &newWomb)
 					checkerr(err)
 
-					sendMsg(fmt.Sprintf("Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты", newWomb.Name), peer, bot)
+					sendMsg(fmt.Sprintf(
+						"Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты",
+						newWomb.Name),
+						peer, bot,
+					)
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "devtools") {
 				if hasTitle(0, womb.Titles) {
@@ -417,7 +496,9 @@ func main() {
 							docUpd(womb, wFil, users)
 							sendMsg("Операция произведена успешно!", peer, bot)
 						default:
-							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools reset [force/health/xp/all]`", peer, bot)
+							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools reset [force/health/xp/all]`",
+								peer, bot,
+							)
 						}
 					} else if cmd == "help" {
 						sendMsg("https://telegra.ph/Vombot-devtools-help-10-28", peer, bot)
@@ -473,7 +554,9 @@ func main() {
 							docUpd(womb, wFil, users)
 							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, bot)
 						} else {
-							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial", peer, bot)
+							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial",
+								peer, bot,
+							)
 						}
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 здоровье = 5 шишей", peer, bot)
@@ -490,7 +573,9 @@ func main() {
 							docUpd(womb, wFil, users)
 							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, bot)
 						} else {
-							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial", peer, bot)
+							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial",
+								peer, bot,
+							)
 						}
 					} else {
 						sendMsg("Надо накопить побольше шишей! 1 мощь = 3 шиша", peer, bot)
@@ -509,9 +594,15 @@ func main() {
 							womb.Money += uint64(win)
 							if addXP := rand.Intn(512 - 1); addXP < 5 {
 								womb.XP += uint32(addXP)
-								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей, а ещё вам дали %d XP! Теперь у вас %d шишей и %d XP", win, addXP, womb.Money, womb.XP), peer, bot)
+								sendMsg(fmt.Sprintf(
+									"Поздравляем! Вы нашли на дороге %d шишей, а ещё вам дали %d XP! Теперь у вас %d шишей и %d XP",
+									win, addXP, womb.Money, womb.XP),
+									peer, bot,
+								)
 							} else {
-								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас %d", win, womb.Money), peer, bot)
+								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас %d", win, womb.Money),
+									peer, bot,
+								)
 							}
 						} else {
 							sendMsg("Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли", peer, bot)
@@ -546,7 +637,9 @@ func main() {
 			} else if strings.HasPrefix(strings.ToLower(txt), "подписаться") {
 				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "подписаться")))
 				if len(args) == 0 {
-					sendMsg("Ошибка: пропущены аргументы `ID` и `алиас`. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]`", peer, bot)
+					sendMsg("Ошибка: пропущены аргументы `ID` и `алиас`. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]`",
+						peer, bot,
+					)
 				} else if len(args) == 1 {
 					sendMsg("Ошибка: пропущен аргумент `алиас`. Синтаксис команды: `подписаться [ID] [алиас (без пробелов)]`", peer, bot)
 				} else if len(args) == 2 {
@@ -559,7 +652,11 @@ func main() {
 								checkerr(err)
 								subbed, name := isInSubs(ID, womb.Subs)
 								if subbed {
-									sendMsg(fmt.Sprintf("Ошибка: вы уже подписались на вомбата с ID %d (алиас: %s). Для того, чтобы отписаться, напишите команду \"отписаться %s\"", ID, name, name), peer, bot)
+									sendMsg(fmt.Sprintf(
+										"Ошибка: вы уже подписались на вомбата с ID %d (алиас: %s). Для того, чтобы отписаться, напишите команду \"отписаться %s\"",
+										ID, name, name),
+										peer, bot,
+									)
 									return
 								}
 								if rCount != 0 {
@@ -633,7 +730,10 @@ func main() {
 						} else {
 							strTitles = "нет"
 						}
-						sendMsg(fmt.Sprintf("Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, alias, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+						sendMsg(fmt.Sprintf(
+							"Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+							tWomb.Name, ID, alias, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
+						)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не обнаружено", alias), peer, bot)
 					}
@@ -669,7 +769,9 @@ func main() {
 					replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
 					return
 				} else {
-					replyToMsg(messID, "Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial\n\nabout womb: else", peer, bot)
+					replyToMsg(messID, "Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial или \n\nabout womb: else",
+						peer, bot,
+					)
 					return
 				}
 				strTitles := ""
@@ -685,15 +787,23 @@ func main() {
 				} else {
 					strTitles = "нет"
 				}
-				sendMsgMD(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей", tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot)
+				sendMsgMD(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+					tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
+				)
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
-				sendMsgMD("https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**", peer, bot)
+				sendMsgMD("https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**",
+					peer, bot,
+				)
 			} else if strings.HasPrefix(strings.ToLower(txt), "перевести шиши") {
 				args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "перевести шиши")))
 				if len(args) < 2 {
-					sendMsg("Ошибка: вы пропустили аргумент(ы). Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`", peer, bot)
+					sendMsg("Ошибка: вы пропустили аргумент(ы). Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`",
+						peer, bot,
+					)
 				} else if len(args) > 2 {
-					sendMsg("Ошибка: слишком много аргументов. Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`", peer, bot)
+					sendMsg("Ошибка: слишком много аргументов. Синтаксис команды: `перевести шиши [кол-во] [ID/алиас получателя]`",
+						peer, bot,
+					)
 				} else {
 					if amount, err := strconv.ParseUint(args[0], 10, 64); err == nil {
 						var ID int64
@@ -720,8 +830,12 @@ func main() {
 									tWomb.Money += amount
 									docUpd(tWomb, bson.D{{"_id", ID}}, users)
 									docUpd(womb, wFil, users)
-									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей", amount, tWomb.Name, womb.Money), peer, bot)
-									sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей", womb.Name, peer, amount, tWomb.Money), ID, bot)
+									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей",
+										amount, tWomb.Name, womb.Money), peer, bot,
+									)
+									sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей",
+										womb.Name, peer, amount, tWomb.Money), ID, bot,
+									)
 								} else {
 									sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, bot)
 								}
@@ -729,7 +843,9 @@ func main() {
 								sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, bot)
 							}
 						} else {
-							sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)", amount, womb.Money), peer, bot)
+							sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)",
+								amount, womb.Money), peer, bot,
+							)
 						}
 					} else {
 						if _, err := strconv.ParseInt(args[0], 10, 64); err == nil {
@@ -753,7 +869,7 @@ func main() {
 				}
 				cur.Close(ctx)
 				sendMsg("Успешно обновлено!", peer, bot)
-				rlog.Printf("Data update by %d\n", peer)
+				rlog.Printf("DATA_UPDATE %d\n", peer)
 				fmt.Printf("Data update by %d\n", peer)
 			} else if isInList(txt, []string{"купить квес", "купить квесс", "купить qwess", "попить квес", "попить квесс", "попить qwess"}) {
 				if isInUsers {
@@ -762,19 +878,40 @@ func main() {
 							womb.Titles = append(womb.Titles, 2)
 							womb.Money -= 256
 							docUpd(womb, wFil, users)
-							sendMsg("Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2", peer, bot)
+							sendMsg(
+								"Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2",
+								peer, bot,
+							)
 						} else {
 							womb.Money -= 256
 							docUpd(womb, wFil, users)
-							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!", peer, bot)
+							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!",
+								peer, bot,
+							)
 						}
 					} else {
-						sendMsg("Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше", peer, bot)
+						sendMsg("Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше",
+							peer, bot,
+						)
 					}
 				} else {
 					sendMsg("К сожалению, вам нужны шиши, чтобы купить квес, а шиши есть только у вомбатов...", peer, bot)
 				}
+			} else if isPrefixInList(txt, []string{"/admin", "одмен!", "/admin", "баг"}) {
+				oArgs := strings.Fields(strings.ToLower(txt))
+				if len(oArgs) < 2 {
+					sendMsg("Ты чаво... где письмо??", peer, bot)
+				} else {
+					msg := strings.Join(oArgs[1:], " ")
+					sendMsg(fmt.Sprintf(
+						"%d %d письмо от %d (@%s isInUsers: %v): \n%s",
+						messID, peer, from, update.Message.From.UserName, isInUsers,
+						msg), conf.SupChatID, bot,
+					)
+					replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+				}
 			}
+
 		}(update, titles, titlesC, bot)
 	}
 }
