@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	// "sort"
@@ -44,9 +45,9 @@ type User struct { // параметры юзера
 
 // Attack реализует атаку
 type Attack struct {
-	ID   int   `bson:"_id"`
-	From int64 `bson:"from"`
-	To   int64 `bson:"to"`
+	ID   string `bson:"_id"`
+	From int64  `bson:"from"`
+	To   int64  `bson:"to"`
 }
 
 var ctx = context.TODO()
@@ -54,7 +55,6 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 const (
 	logpath = "runtime.log"
-	botID   = 2053985314
 )
 
 func initLog() *log.Logger {
@@ -157,11 +157,17 @@ func toDoc(v interface{}) (doc *bson.D, err error) {
 }
 
 // docUpd _
-func docUpd(v User, filter bson.D, col mongo.Collection) {
+func docUpd(v User, filter bson.M, col mongo.Collection) error {
 	doc, err := toDoc(v)
-	checkerr(err)
+	if err != nil {
+		return err
+	}
 	ctx := context.TODO()
 	_, err = col.UpdateOne(ctx, filter, bson.M{"$set": doc})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // sendMsg отправляет обычное сообщение
@@ -191,6 +197,17 @@ func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 }
 
 // replyToMsgMD отвечает сообщением с markdown
+func replyToMsgMDNL(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewMessage(chatID, message)
+	msg.ReplyToMessageID = replyID
+	msg.ParseMode = "markdown"
+	msg.DisableWebPagePreview = true
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
+// replyToMsgMD отвечает сообщением с markdown
 func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
@@ -200,13 +217,81 @@ func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int
 	return mess.MessageID
 }
 
+// isInAttacks возвращает информацию, еслть ли существо в атаках и
+// отправитель ли он
+func isInAttacks(id int, attacks mongo.Collection) (isIn, isFrom bool) {
+	if f, err := attacks.CountDocuments(ctx, bson.M{"from": id}); f > 0 && err == nil {
+		isFrom = true
+	} else if err != nil {
+		checkerr(err)
+	}
+	var isTo bool
+	if t, err := attacks.CountDocuments(ctx, bson.M{"to": id}); t > 0 && err == nil {
+		isTo = true
+	} else if err != nil {
+		checkerr(err)
+	}
+	isIn = isFrom || isTo
+	return isIn, isFrom
+}
+
+var errNoAttack error = fmt.Errorf("there aren't any attacks")
+
+func getAttackByID(aid string, attacks mongo.Collection) (at Attack, err error) {
+	c, err := attacks.CountDocuments(ctx, bson.M{"_id": aid})
+	if err != nil {
+		return Attack{}, err
+	} else if c < 1 {
+		return Attack{}, errNoAttack
+	}
+	err = attacks.FindOne(ctx, bson.M{"_id": aid}).Decode(&at)
+	if err != nil {
+		return Attack{}, err
+	}
+	return at, nil
+}
+
+func getAttackByWomb(id int, isFrom bool, attacks mongo.Collection) (at Attack, err error) {
+	var (
+		fil bson.M
+	)
+	if isFrom {
+		fil = bson.M{"from": id}
+	} else {
+		fil = bson.M{"to": id}
+	}
+	c, err := attacks.CountDocuments(ctx, fil)
+	if err != nil {
+		return Attack{}, err
+	} else if c < 1 {
+		return Attack{}, errNoAttack
+	}
+	err = attacks.FindOne(ctx, fil).Decode(&at)
+	if err != nil {
+		return Attack{}, err
+	}
+	return at, nil
+}
+
 // delMsg удаляет сообщение
 func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
-	deleteMessageConfig := tg.DeleteMessageConfig{
+	delConfig := tg.DeleteMessageConfig{
 		ChatID:    chatID,
 		MessageID: ID,
 	}
-	_, err := bot.DeleteMessage(deleteMessageConfig)
+	_, err := bot.DeleteMessage(delConfig)
+	checkerr(err)
+}
+
+func editMsg(mid int, txt string, chatID int64, bot *tg.BotAPI) {
+	editConfig := tg.EditMessageTextConfig{
+		BaseEdit: tg.BaseEdit{
+			ChatID:    chatID,
+			MessageID: mid,
+		},
+		Text: txt,
+	}
+	_, err := bot.Send(editConfig)
 	checkerr(err)
 }
 
@@ -224,10 +309,13 @@ func main() {
 
 	users := *(db.Collection("users"))
 
+	attacks := *(db.Collection("attacks"))
+	func(a mongo.Collection) {}(attacks)
+
 	titles := []Title{}
 
 	titlesC := *(db.Collection("titles"))
-	cur, err := titlesC.Find(ctx, bson.D{})
+	cur, err := titlesC.Find(ctx, bson.M{})
 	defer cur.Close(ctx)
 	checkerr(err)
 	for cur.Next(ctx) {
@@ -247,13 +335,15 @@ func main() {
 	checkerr(err)
 	fmt.Println("Start!")
 
+	const errStart string = "Ошибка... Ответьте командой /admin на это сообщение\n"
+
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
 			go func(update tg.Update, bot *tg.BotAPI) {
-				if update.Message.ReplyToMessage == nil || update.Message.ReplyToMessage.From.ID != botID {
+				if update.Message.ReplyToMessage == nil || update.Message.ReplyToMessage.From.ID != bot.Self.ID {
 					return
 				}
 				strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
@@ -267,8 +357,8 @@ func main() {
 					return
 				}
 				if update.Message.From.UserName != "" {
-					replyToMsgMD(int(omID), fmt.Sprintf(
-						"Ответ от [админа](tg:resolve?domain=%s): \n%s",
+					replyToMsgMDNL(int(omID), fmt.Sprintf(
+						"Ответ от [админа](t.me/%s): \n%s",
 						update.Message.From.UserName,
 						update.Message.Text,
 					), peer, bot)
@@ -289,13 +379,17 @@ func main() {
 				users = *(db.Collection("users"))
 
 				womb := User{}
-				wFil := bson.D{{"_id", from}}
+				wFil := bson.M{"_id": from}
 				rCount, err := users.CountDocuments(ctx, wFil)
-				checkerr(err)
+				if err != nil {
+					sendMsg(errStart+"isInUsers: count_womb", peer, bot)
+				}
 				isInUsers := rCount != 0
 				if isInUsers {
 					err = users.FindOne(ctx, wFil).Decode(&womb)
-					checkerr(err)
+					if err != nil {
+						replyToMsg(messID, errStart+"womb: find_womb", peer, bot)
+					}
 				}
 
 				rlog.Printf("MESSGAE_GROUP p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
@@ -315,34 +409,62 @@ func main() {
 							return
 						}
 					} else if ID, err = strconv.ParseInt(strID, 10, 64); err == nil {
-						rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
-						checkerr(err)
+						rCount, err = users.CountDocuments(ctx, bson.M{"_id": ID})
+						if err != nil {
+							replyToMsg(messID, errStart+"about_womb: isInUsers", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						if rCount == 0 {
 							replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с ID %d не существует", ID), peer, bot)
 							return
 						}
-						err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
-						checkerr(err)
+						err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"about_womb: find_womb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 					} else if ID, ok = womb.Subs[strID]; ok {
-						err = users.FindOne(ctx, bson.D{{"_id", womb.Subs[strID]}}).Decode(&tWomb)
-						checkerr(err)
+						err = users.FindOne(ctx, bson.M{"_id": womb.Subs[strID]}).Decode(&tWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"about_womb: alias_no_users", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 					} else if !ok {
+						if len([]rune(strID)) > 64 {
+							replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+							return
+						}
 						replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
 						return
 					} else {
-						replyToMsg(messID,
-							"Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial\n\nabout womb: else",
-							peer, bot,
-						)
+						replyToMsg(messID, errStart+"about_womb: else", peer, bot)
+						rlog.Println("Error: about_womb: else")
 						return
 					}
 					strTitles := ""
 					tCount := len(tWomb.Titles)
 					if tCount != 0 {
 						for _, id := range tWomb.Titles {
+							rCount, err = titlesC.CountDocuments(ctx, bson.M{"_id": id})
+							if err != nil {
+								replyToMsg(messID, errStart+"list_subs: count_titles", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							if rCount == 0 {
+								strTitles += fmt.Sprintf("Ошибка: титула с ID %d нет (ответьте командой /admin) |", id)
+								continue
+							}
 							elem := Title{}
-							err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
-							checkerr(err)
+							err = titlesC.FindOne(ctx, bson.M{"_id": id}).Decode(&elem)
+							if err != nil {
+								replyToMsg(messID, errStart+"about_womb: title: find_title", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
 						}
 						strTitles = strings.TrimSuffix(strTitles, " | ")
@@ -368,13 +490,16 @@ func main() {
 					if strID == "" {
 						replyToMsg(messID, "Ошибка: пустой ID титула", peer, bot)
 					} else if i, err := strconv.ParseInt(strID, 10, 64); err == nil {
-						checkerr(err)
 						ID := uint16(i)
-						rCount, err := titlesC.CountDocuments(ctx, bson.D{{"_id", ID}})
-						checkerr(err)
+						rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": ID})
+						if err != nil {
+							replyToMsg(messID, errStart+"about_title: count_titles", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						if rCount != 0 {
 							elem := Title{}
-							err = titlesC.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&elem)
+							err = titlesC.FindOne(ctx, bson.M{"_id": ID}).Decode(&elem)
 							replyToMsg(messID, fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), peer, bot)
 						} else {
 							replyToMsg(messID, fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), peer, bot)
@@ -390,16 +515,133 @@ func main() {
 				} else if isPrefixInList(txt, []string{"/admin", "/админ", "/admin@wombatobot", "одмен!", "/баг", "/bug", "/bug@wombatobot", "/support", "/support@wombatobot"}) {
 					oArgs := strings.Fields(strings.ToLower(txt))
 					if len(oArgs) < 2 {
-						replyToMsg(messID, "Ты чаво... где письмо??", peer, bot)
-					} else {
-						msg := strings.Join(oArgs[1:], " ")
+						if update.Message.ReplyToMessage == nil {
+							replyToMsg(messID, "Ты чаво... где письмо??", peer, bot)
+							return
+						}
+						r := update.Message.ReplyToMessage
 						sendMsg(fmt.Sprintf(
-							"%d %d \nписьмо из группы %d (@%s) от %d (@%s isInUsers: %v): \n%s",
-							messID, peer, peer, update.Message.Chat.UserName, from,
-							update.Message.From.UserName, isInUsers, msg),
+							"%d %d \nписьмо из группы (%d @%s) от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s)",
+							messID, peer, peer, update.Message.Chat.UserName,
+							from, update.Message.From.UserName,
+							isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName),
 							conf.SupChatID, bot,
 						)
-						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ\n\nЗЫ: не засоряйте группы!", peer, bot)
+						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+					} else {
+						if update.Message.ReplyToMessage == nil {
+							msg := strings.Join(oArgs[1:], " ")
+							sendMsg(fmt.Sprintf(
+								"%d %d \nписьмо из группы %d (@%s) от %d (@%s isInUsers: %v): \n%s",
+								messID, peer, peer, update.Message.Chat.UserName, from,
+								update.Message.From.UserName, isInUsers, msg),
+								conf.SupChatID, bot,
+							)
+							replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+						} else {
+							r := update.Message.ReplyToMessage
+							sendMsg(fmt.Sprintf(
+								"%d %d \nписьмо из группы (%d @%s) от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) с текстом:\n%s",
+								messID, peer, peer, update.Message.Chat.UserName,
+								from, update.Message.From.UserName,
+								isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
+								txt), conf.SupChatID, bot,
+							)
+							replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+						}
+					}
+				} else if strings.HasPrefix(strings.ToLower(txt), "атака") {
+					aargs := strings.Fields(strings.ToLower(txt))
+					if len(aargs) < 2 {
+						sendMsg("Атака: аргументов должно быть больше одного", peer, bot)
+						return
+					}
+					args := aargs[1:]
+					al := len(args)
+					switch args[0] {
+					case "статус":
+						var ID int64
+						if al == 1 {
+							if !isInUsers {
+								replyToMsg(messID, "Но у вас вомбата нет...", peer, bot)
+								return
+							}
+							ID = int64(from)
+						} else if al > 2 {
+							replyToMsg(messID, "Атака статус: слишком много аргументов", peer, bot)
+							return
+						} else {
+							strID := args[1]
+							if wid, err := strconv.ParseInt(strID, 10, 64); err == nil {
+								rCount, err = users.CountDocuments(ctx, bson.M{"_id": wid})
+								if err != nil {
+									replyToMsg(messID, errStart+"attack: to: count_to", peer, bot)
+									rlog.Println("Error: ", err)
+									return
+								}
+								if rCount == 0 {
+									replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с ID %d не существует", wid), peer, bot)
+									return
+								}
+								ID = wid
+							} else if wid, ok := womb.Subs[strID]; ok {
+								ID = wid
+							} else if !ok {
+								if len([]rune(strID)) > 64 {
+									replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+									return
+								}
+								replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
+								return
+							} else {
+								replyToMsg(messID, errStart+"attack: to: else", peer, bot)
+								rlog.Println("Error: ", "attack: to: else")
+								return
+							}
+						}
+						var at Attack
+						if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
+							a, err := getAttackByWomb(int(ID), true, attacks)
+							if err != nil {
+								replyToMsg(messID, errStart+"attack: status: to_at", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							at = a
+						} else if is {
+							a, err := getAttackByWomb(from, false, attacks)
+							if err != nil {
+								replyToMsg(messID, errStart+"attack: status: from_at", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							at = a
+						} else {
+							replyToMsg(messID, fmt.Sprintf("Атаки с вомбатом с ID %d не найдено...", ID), peer, bot)
+							return
+						}
+						var fromWomb, toWomb User
+						err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&fromWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: status: find_fromWomb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&toWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: status: finf_towomb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						replyToMsg(messID, fmt.Sprintf(
+							"От: %s (%d)\nКому: %s (%d)\n",
+							fromWomb.Name, fromWomb.ID,
+							toWomb.Name, toWomb.ID,
+						), peer, bot)
+					case "атака":
+						replyToMsg(messID, strings.Repeat("атака ", 42), peer, bot)
+					default:
+						replyToMsg(messID, "В группах работает только `статус`...", peer, bot)
 					}
 				}
 			}(update, titles, titlesC, bot)
@@ -415,7 +657,7 @@ func main() {
 
 			womb := User{}
 
-			wFil := bson.D{{"_id", peer}}
+			wFil := bson.M{"_id": peer}
 
 			rCount, err := users.CountDocuments(ctx, wFil)
 			checkerr(err)
@@ -453,7 +695,11 @@ func main() {
 						Subs:   map[string]int64{},
 					}
 					_, err = users.InsertOne(ctx, &newWomb)
-					checkerr(err)
+					if err != nil {
+						replyToMsg(messID, errStart+"new_womb: insert", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 
 					sendMsg(fmt.Sprintf(
 						"Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты",
@@ -467,9 +713,13 @@ func main() {
 					if strings.HasPrefix(cmd, "set money") {
 						strNewMoney := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd), "set money"))
 						if i, err := strconv.ParseUint(strNewMoney, 10, 64); err == nil {
-							checkerr(err)
 							womb.Money = i
-							docUpd(womb, wFil, users)
+							err = docUpd(womb, wFil, users)
+							if err != nil {
+								replyToMsg(messID, errStart+"devtools: set_money: upd", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей на счету: %d", womb.Money), peer, bot)
 						} else {
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools set money {кол-во шишей}`", peer, bot)
@@ -479,60 +729,83 @@ func main() {
 						switch arg {
 						case "force":
 							womb.Force = 2
-							docUpd(womb, wFil, users)
-							sendMsg("Операция произведена успешно!", peer, bot)
 						case "health":
 							womb.Health = 5
-							docUpd(womb, wFil, users)
-							sendMsg("Операция произведена успешно!", peer, bot)
 						case "xp":
 							womb.XP = 0
-							docUpd(womb, wFil, users)
-							sendMsg("Операция произведена успешно!", peer, bot)
 						case "all":
 							womb.Force = 2
 							womb.Health = 5
 							womb.XP = 0
-							docUpd(womb, wFil, users)
-							sendMsg("Операция произведена успешно!", peer, bot)
 						default:
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools reset [force/health/xp/all]`",
 								peer, bot,
 							)
+							return
 						}
+						err := docUpd(womb, wFil, users)
+						if err != nil {
+							replyToMsg(messID, errStart+"devtools: reset: update", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendMsg("Операция произведена успешно!", peer, bot)
 					} else if cmd == "help" {
 						sendMsg("https://telegra.ph/Vombot-devtools-help-10-28", peer, bot)
 					}
 				} else if strings.TrimSpace(txt) == "devtools on" {
 					womb.Titles = append(womb.Titles, 0)
-					docUpd(womb, wFil, users)
+					err := docUpd(womb, wFil, users)
+					if err != nil {
+						replyToMsg(messID, errStart+"devtools: on", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					sendMsg("Выдан титул \"Вомботестер\" (ID: 0)", peer, bot)
 				}
 			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
 				if isInUsers {
 					if !(hasTitle(1, womb.Titles)) {
 						_, err = users.DeleteOne(ctx, wFil)
-						checkerr(err)
+						if err != nil {
+							replyToMsg(messID, errStart+"delete_womb: delete", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, bot)
 					} else {
-						sendMsg("Ошибка: вы лишены права уничтожать вомбата; обратитксь к @dikey0ficial за разрешением", peer, bot)
+						sendMsg("Ошибка: вы лишены права уничтожать вомбата; ответьте на это сообщение командой /admin для объяснений",
+							peer, bot)
 					}
 				} else {
 					sendMsg("Но у вас нет вомбата...", peer, bot)
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "поменять имя") {
 				if isInUsers {
-					name := strings.Title(strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "поменять имя ")))
+					if hasTitle(1, womb.Titles) {
+						sendMsg("Тебе нельзя, ты спамер (оспорить: /admin)", peer, bot)
+						return
+					}
+					name := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "поменять имя"))
 					if womb.Money >= 3 {
-						if isInList(name, []string{"admin", "вoмбoт", "вoмбoт", "вомбoт", "вомбот", "бот", "bot", "бoт", "bоt"}) {
+						if isInList(name, []string{"admin", "вoмбoт", "вoмбoт", "вомбoт", "вомбот", "бот", "bot", "бoт", "bоt",
+							"авто", "auto"}) {
 							sendMsg("Такие никнеймы заводить нельзя", peer, bot)
 						} else if name != "" {
+							if len([]rune(name)) > 64 {
+								replyToMsg(messID, "Слишком длинный никнейм!", peer, bot)
+								return
+							}
 							womb.Money -= 3
 							split := strings.Fields(txt)
 							caseName := strings.Join(split[2:], " ")
 							womb.Name = caseName
-							docUpd(womb, wFil, users)
-
+							err := docUpd(womb, wFil, users)
+							if err != nil {
+								replyToMsg(messID, errStart+"rename: update", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							sendMsg(fmt.Sprintf("Теперь вашего вомбата зовут %s. С вашего счёта сняли 3 шиша", caseName), peer, bot)
 						} else {
 							sendMsg("У вас пустое имя...", peer, bot)
@@ -548,13 +821,19 @@ func main() {
 			} else if isInList(txt, []string{"купить здоровье", "прокачка здоровья", "прокачать здоровье"}) {
 				if isInUsers {
 					if womb.Money >= 5 {
-						if uint64(womb.Health+1) < 2^32 {
+						if uint64(womb.Health+1) < uint64(math.Pow(2, 32)) {
 							womb.Money -= 5
 							womb.Health++
-							docUpd(womb, wFil, users)
+							err := docUpd(womb, wFil, users)
+							if err != nil {
+								replyToMsg(messID, errStart+"buy_health: update", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, bot)
 						} else {
-							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial",
+							sendMsg(
+								"Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
 								peer, bot,
 							)
 						}
@@ -567,13 +846,19 @@ func main() {
 			} else if isInList(txt, []string{"купить мощь", "прокачка мощи", "прокачка силы", "прокачать мощь", "прокачать силу"}) {
 				if isInUsers {
 					if womb.Money >= 3 {
-						if uint64(womb.Force+1) < 2^32 {
+						if uint64(womb.Force+1) < uint64(math.Pow(2, 32)) {
 							womb.Money -= 3
 							womb.Force++
-							docUpd(womb, wFil, users)
+							err := docUpd(womb, wFil, users)
+							if err != nil {
+								replyToMsg(messID, errStart+"buy_force: update", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, bot)
 						} else {
-							sendMsg("Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, обратитесь к @dikey0ficial",
+							sendMsg(
+								"Ошибка: вы достигли максимального количества мощи (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
 								peer, bot,
 							)
 						}
@@ -607,8 +892,12 @@ func main() {
 						} else {
 							sendMsg("Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли", peer, bot)
 						}
-						docUpd(womb, wFil, users)
-
+						err := docUpd(womb, wFil, users)
+						if err != nil {
+							replyToMsg(messID, errStart+"find_money: update", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 					} else {
 						sendMsg("Охранники тебя прогнали; они требуют шиш за проход, а у тебя и шиша-то нет", peer, bot)
 					}
@@ -620,13 +909,16 @@ func main() {
 				if strID == "" {
 					sendMsg("Ошибка: пустой ID титула", peer, bot)
 				} else if i, err := strconv.ParseInt(strID, 10, 64); err == nil {
-					checkerr(err)
 					ID := uint16(i)
-					rCount, err := titlesC.CountDocuments(ctx, bson.D{{"_id", ID}})
-					checkerr(err)
+					rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": ID})
+					if err != nil {
+						replyToMsg(messID, errStart+"about_title: count_titles", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					if rCount != 0 {
 						elem := Title{}
-						err = titlesC.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&elem)
+						err = titlesC.FindOne(ctx, bson.M{"_id": ID}).Decode(&elem)
 						sendMsg(fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), peer, bot)
 					} else {
 						sendMsg(fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), peer, bot)
@@ -646,10 +938,16 @@ func main() {
 					if ID, err := strconv.ParseInt(args[0], 10, 64); err == nil {
 						if _, err := strconv.ParseInt(args[1], 10, 64); err == nil {
 							sendMsg("Ошибка: алиас не должен быть числом", peer, bot)
+						} else if len([]rune(args[1])) > 64 {
+							sendMsg("Слишком длинный алиас!", peer, bot)
 						} else {
 							if elem, ok := womb.Subs[args[1]]; !ok {
-								rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
-								checkerr(err)
+								rCount, err = users.CountDocuments(ctx, bson.M{"_id": ID})
+								if err != nil {
+									replyToMsg(messID, errStart+"subscribe: count", peer, bot)
+									rlog.Println("Error: ", err)
+									return
+								}
 								subbed, name := isInSubs(ID, womb.Subs)
 								if subbed {
 									sendMsg(fmt.Sprintf(
@@ -661,7 +959,12 @@ func main() {
 								}
 								if rCount != 0 {
 									womb.Subs[args[1]] = ID
-									docUpd(womb, wFil, users)
+									err := docUpd(womb, wFil, users)
+									if err != nil {
+										replyToMsg(messID, errStart+"subscribe: update", peer, bot)
+										rlog.Println("Error: ", err)
+										return
+									}
 									sendMsg(fmt.Sprintf("Вомбат с ID %d добавлен в ваши подписки", ID), peer, bot)
 								} else {
 									sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не найдено", ID), peer, bot)
@@ -678,10 +981,18 @@ func main() {
 				}
 			} else if strings.HasPrefix(strings.ToLower(txt), "отписаться") {
 				alias := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "отписаться"))
+				if len([]rune(alias)) > 64 {
+					replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+					return
+				}
 				if _, ok := womb.Subs[alias]; ok {
 					delete(womb.Subs, alias)
-					docUpd(womb, wFil, users)
-
+					err := docUpd(womb, wFil, users)
+					if err != nil {
+						replyToMsg(messID, errStart+"unsub: update", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					sendMsg(fmt.Sprintf("Вы отписались от пользователя с алиасом %s", alias), peer, bot)
 				} else {
 					sendMsg(fmt.Sprintf("Ошибка: вы не подписаны на пользователя с алиасом `%s`", alias), peer, bot)
@@ -690,12 +1001,20 @@ func main() {
 				strSubs := "Вот список твоих подписок:"
 				if len(womb.Subs) != 0 {
 					for alias, id := range womb.Subs {
-						rCount, err = users.CountDocuments(ctx, bson.D{{"_id", id}})
-						checkerr(err)
+						rCount, err = users.CountDocuments(ctx, bson.M{"_id": id})
+						if err != nil {
+							replyToMsg(messID, errStart+"sub_list: count", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						if rCount != 0 {
 							tWomb := User{}
-							err = users.FindOne(ctx, bson.D{{"_id", id}}).Decode(&tWomb)
-							checkerr(err)
+							err = users.FindOne(ctx, bson.M{"_id": id}).Decode(&tWomb)
+							if err != nil {
+								replyToMsg(messID, errStart+"sub_list: find", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							strSubs += fmt.Sprintf("\n %s | ID: %d | Алиас: %s", tWomb.Name, id, alias)
 						} else {
 							strSubs += fmt.Sprintf("\n Ошибка: пользователь по алиасу `%s` не найден", alias)
@@ -711,19 +1030,41 @@ func main() {
 					return
 				}
 				for alias, ID := range womb.Subs {
-					rCount, err := users.CountDocuments(ctx, bson.D{{"_id", ID}})
-					checkerr(err)
+					rCount, err := users.CountDocuments(ctx, bson.M{"_id": ID})
+					if err != nil {
+						replyToMsg(messID, errStart+"list_subs: count", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					if rCount != 0 {
 						tWomb := User{}
-						err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
-						checkerr(err)
+						err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"list_subs: find", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						strTitles := ""
 						tCount := len(tWomb.Titles)
 						if tCount != 0 {
 							for _, id := range tWomb.Titles {
+								rCount, err = titlesC.CountDocuments(ctx, bson.M{"_id": id})
+								if err != nil {
+									replyToMsg(messID, errStart+"list_subs: count_titles", peer, bot)
+									rlog.Println("Error: ", err)
+									return
+								}
+								if rCount == 0 {
+									strTitles += fmt.Sprintf("Ошибка: титула с ID %d нет (ответьте командой /admin) |", id)
+									continue
+								}
 								elem := Title{}
-								err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
-								checkerr(err)
+								err = titlesC.FindOne(ctx, bson.M{"_id": id}).Decode(&elem)
+								if err != nil {
+									replyToMsg(messID, errStart+"list_subs: find_titles", peer, bot)
+									rlog.Println("Error: ", err)
+									return
+								}
 								strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
 							}
 							strTitles = strings.TrimSuffix(strTitles, " | ")
@@ -754,24 +1095,39 @@ func main() {
 						return
 					}
 				} else if ID, err = strconv.ParseInt(strID, 10, 64); err == nil {
-					rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
-					checkerr(err)
+					rCount, err = users.CountDocuments(ctx, bson.M{"_id": ID})
+					if err != nil {
+						replyToMsg(messID, errStart+"about_womb: id: count", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					if rCount == 0 {
 						sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не существует", ID), peer, bot)
 						return
 					}
-					err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
-					checkerr(err)
+					err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+					if err != nil {
+						replyToMsg(messID, errStart+"about_womb: id: find", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 				} else if ID, ok = womb.Subs[strID]; ok {
-					err = users.FindOne(ctx, bson.D{{"_id", womb.Subs[strID]}}).Decode(&tWomb)
-					checkerr(err)
+					err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+					if err != nil {
+						replyToMsg(messID, errStart+"about_womb: alias: find", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 				} else if !ok {
+					if len([]rune(strID)) > 64 {
+						replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+						return
+					}
 					replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
 					return
 				} else {
-					replyToMsg(messID, "Ошибка: непредвиденная ситуация. Перешлите это сообщение @dikey0ficial или \n\nabout womb: else",
-						peer, bot,
-					)
+					replyToMsg(messID, errStart+"about womb: else", peer, bot)
+					rlog.Println("Error: about womb: else")
 					return
 				}
 				strTitles := ""
@@ -779,8 +1135,22 @@ func main() {
 				if tCount != 0 {
 					for _, id := range tWomb.Titles {
 						elem := Title{}
-						err = titlesC.FindOne(ctx, bson.D{{"_id", id}}).Decode(&elem)
-						checkerr(err)
+						rCount, err = titlesC.CountDocuments(ctx, bson.M{"_id": id})
+						if err != nil {
+							replyToMsg(messID, errStart+"list_subs: count_titles", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						if rCount == 0 {
+							strTitles += fmt.Sprintf("Ошибка: титула с ID %d нет (ответьте командой /admin) |", id)
+							continue
+						}
+						err = titlesC.FindOne(ctx, bson.M{"_id": id}).Decode(&elem)
+						if err != nil {
+							replyToMsg(messID, errStart+"about_womb: find_title", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
 					}
 					strTitles = strings.TrimSuffix(strTitles, " | ")
@@ -810,26 +1180,48 @@ func main() {
 						if ID, err = strconv.ParseInt(args[1], 10, 64); err != nil {
 							var ok bool
 							if ID, ok = womb.Subs[args[1]]; !ok {
+								if len([]rune(args[1])) > 64 {
+									replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+									return
+								}
 								sendMsg(fmt.Sprintf("Ошибка: алиаса %s не обнаружено", args[1]), peer, bot)
 								return
 							}
 						}
-						if womb.Money > amount {
+						if womb.Money >= amount {
 							if amount != 0 {
 								if ID == peer {
 									sendMsg("Ты читер блин нафиг!!!!!! нидам тебе самому себе перевести", peer, bot)
 									return
 								}
-								rCount, err = users.CountDocuments(ctx, bson.D{{"_id", ID}})
-								checkerr(err)
+								rCount, err = users.CountDocuments(ctx, bson.M{"_id": ID})
+								if err != nil {
+									replyToMsg(messID, errStart+"send_shishs: count_to", peer, bot)
+									rlog.Println("Error: ", err)
+									return
+								}
 								if rCount != 0 {
 									tWomb := User{}
-									err = users.FindOne(ctx, bson.D{{"_id", ID}}).Decode(&tWomb)
-									checkerr(err)
+									err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+									if err != nil {
+										replyToMsg(messID, errStart+"send_shishs: find_to", peer, bot)
+										rlog.Println("Error: ", err)
+										return
+									}
 									womb.Money -= amount
 									tWomb.Money += amount
-									docUpd(tWomb, bson.D{{"_id", ID}}, users)
-									docUpd(womb, wFil, users)
+									err := docUpd(tWomb, bson.M{"_id": ID}, users)
+									if err != nil {
+										replyToMsg(messID, errStart+"send_shishs: update: from", peer, bot)
+										rlog.Println("Error: ", err)
+										return
+									}
+									err = docUpd(womb, wFil, users)
+									if err != nil {
+										replyToMsg(messID, errStart+"send_shishs: update: to", peer, bot)
+										rlog.Println("Error: ", err)
+										return
+									}
 									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей",
 										amount, tWomb.Name, womb.Money), peer, bot,
 									)
@@ -857,14 +1249,24 @@ func main() {
 				}
 			} else if txt == "обновить данные" && hasTitle(0, womb.Titles) {
 				users = *(db.Collection("users"))
+				attacks = *(db.Collection("attacks"))
 				titlesC := *(db.Collection("titles"))
 				cur, err := titlesC.Find(ctx, bson.D{})
 				defer cur.Close(ctx)
-				checkerr(err)
+				if err != nil {
+					replyToMsg(messID, errStart+"update_data: titles", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				titles = []Title{}
 				for cur.Next(ctx) {
 					var nextOne Title
 					err := cur.Decode(&nextOne)
-					checkerr(err)
+					if err != nil {
+						replyToMsg(messID, errStart+"update_data: titles_decode", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					titles = append(titles, nextOne)
 				}
 				cur.Close(ctx)
@@ -877,41 +1279,538 @@ func main() {
 						if !(hasTitle(2, womb.Titles)) {
 							womb.Titles = append(womb.Titles, 2)
 							womb.Money -= 256
-							docUpd(womb, wFil, users)
+							err = docUpd(womb, wFil, users)
+							if err != nil {
+								replyToMsg(messID, errStart+"nyamka: update_first_time", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
 							sendMsg(
 								"Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2",
 								peer, bot,
 							)
 						} else {
 							womb.Money -= 256
-							docUpd(womb, wFil, users)
-							sendMsg("Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!",
+							err = docUpd(womb, wFil, users)
+							if err != nil {
+								replyToMsg(messID, errStart+"nyamka: update", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							sendMsg(
+								"Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!",
 								peer, bot,
 							)
 						}
 					} else {
-						sendMsg("Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше",
+						sendMsg(
+							"Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше",
 							peer, bot,
 						)
 					}
 				} else {
 					sendMsg("К сожалению, вам нужны шиши, чтобы купить квес, а шиши есть только у вомбатов...", peer, bot)
 				}
-			} else if isPrefixInList(txt, []string{"/admin", "одмен!", "/admin", "баг"}) {
+			} else if isPrefixInList(txt, []string{"/admin", "/админ", "/admin@wombatobot", "одмен!", "/баг", "/bug", "/bug@wombatobot", "/support", "/support@wombatobot"}) {
 				oArgs := strings.Fields(strings.ToLower(txt))
 				if len(oArgs) < 2 {
-					sendMsg("Ты чаво... где письмо??", peer, bot)
-				} else {
-					msg := strings.Join(oArgs[1:], " ")
+					if update.Message.ReplyToMessage == nil {
+						replyToMsg(messID, "Ты чаво... где письмо??", peer, bot)
+						return
+					}
+					r := update.Message.ReplyToMessage
 					sendMsg(fmt.Sprintf(
-						"%d %d письмо от %d (@%s isInUsers: %v): \n%s",
-						messID, peer, from, update.Message.From.UserName, isInUsers,
-						msg), conf.SupChatID, bot,
+						"%d %d \nписьмо от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s)",
+						messID, peer, from, update.Message.From.UserName,
+						isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName),
+						conf.SupChatID, bot,
 					)
 					replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+				} else {
+					if update.Message.ReplyToMessage == nil {
+						msg := strings.Join(oArgs[1:], " ")
+						sendMsg(fmt.Sprintf(
+							"%d %d \nписьмо %d (@%s) от %d (@%s isInUsers: %v): \n%s",
+							messID, peer, peer, update.Message.Chat.UserName, from,
+							update.Message.From.UserName, isInUsers, msg),
+							conf.SupChatID, bot,
+						)
+						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+					} else {
+						r := update.Message.ReplyToMessage
+						sendMsg(fmt.Sprintf(
+							"%d %d \nписьмо от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) с текстом:\n%s",
+							messID, peer, from, update.Message.From.UserName,
+							isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
+							txt), conf.SupChatID, bot,
+						)
+						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
+					}
+				}
+			} else if strings.HasPrefix(strings.ToLower(txt), "атака") {
+				aargs := strings.Fields(strings.ToLower(txt))
+				if len(aargs) < 2 {
+					sendMsg("Атака: аргументов должно быть больше одного", peer, bot)
+					return
+				}
+				args := aargs[1:]
+				al := len(args)
+				switch args[0] {
+				case "атака":
+					sendMsg(strings.Repeat("атака ", 42), peer, bot)
+				case "на":
+					if al < 2 {
+						sendMsg("Атака на: на кого?", peer, bot)
+						return
+					} else if al != 2 {
+						sendMsg("Атака на: слишком много аргументов", peer, bot)
+						return
+					} else if !isInUsers {
+						sendMsg("Вы не можете атаковать в виду остутствия вомбата", peer, bot)
+						return
+					}
+					strID := args[1]
+					var (
+						ID    int64
+						tWomb User
+						ok    bool
+					)
+					if is, isFrom := isInAttacks(from, attacks); isFrom {
+						at, err := getAttackByWomb(from, true, attacks)
+						if err != nil && err != errNoAttack {
+							replyToMsg(messID, errStart+"attack: to: from_from: get_attack_by_womb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						var aWomb User
+						err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&aWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to: find_attack_from", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendMsgMD(fmt.Sprintf(
+							"Вы уже атакуете вомбата %s (ID: %d). Чтобы отозвать атаку, напишите `атака отмена`",
+							aWomb.Name, aWomb.ID),
+							peer, bot)
+						return
+					} else if is {
+						at, err := getAttackByWomb(from, false, attacks)
+						if err != nil && err != errNoAttack {
+							replyToMsg(messID, errStart+"attack: to: from_to: get_attack_by_womb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						var aWomb User
+						err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&aWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to: find_attack_to", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendMsgMD(fmt.Sprintf(
+							"Вас уже атакует вомбат %s (ID: %d). Чтобы отклонить атаку, напишите `атака отмена`",
+							aWomb.Name, aWomb.ID),
+							peer, bot)
+						return
+					}
+					if ID, err = strconv.ParseInt(strID, 10, 64); err == nil {
+						rCount, err = users.CountDocuments(ctx, bson.M{"_id": ID})
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to: count_to", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						if rCount == 0 {
+							sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не существует", ID), peer, bot)
+							return
+						}
+						err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to: find_to", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+					} else if ID, ok = womb.Subs[strID]; ok {
+						err = users.FindOne(ctx, bson.M{"_id": womb.Subs[strID]}).Decode(&tWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to ", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+					} else if !ok {
+						if len([]rune(strID)) > 64 {
+							replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+							return
+						}
+						replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
+						return
+					} else {
+						replyToMsg(messID, errStart+"attack: to: else", peer, bot)
+						rlog.Println("Error: ", "attack: to: else")
+						return
+					}
+					if ID == int64(from) {
+						sendMsg("„Основная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", peer, bot)
+						return
+					} else if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
+						at, err := getAttackByWomb(int(ID), true, attacks)
+						if err != nil && err != errNoAttack {
+							replyToMsg(messID, errStart+"attack: to: to_from: get_attack_by_womb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						var aWomb User
+						err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&aWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to: find_to_from", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendMsgMD(fmt.Sprintf(
+							"%s уже атакует вомбата %s (ID: %d). Попросите %s решить данную проблему",
+							strID, aWomb.Name, aWomb.ID, strID),
+							peer, bot)
+						return
+					} else if is {
+						at, err := getAttackByWomb(from, false, attacks)
+						if err != nil && err != errNoAttack {
+							replyToMsg(messID, errStart+"attack: to: to_to: get_attack_by_womb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						var aWomb User
+						err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&aWomb)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: to: find_to_to", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendMsgMD(fmt.Sprintf(
+							"Вомбат %s (ID: %d) уже атакуется %s. Попросите %s решить данную проблему",
+							aWomb.Name, aWomb.ID, strID, strID),
+							peer, bot)
+						return
+					}
+					var newAt = Attack{
+						ID:   strconv.Itoa(from) + "_" + strconv.Itoa(int(ID)),
+						From: int64(from),
+						To:   ID,
+					}
+					_, err = attacks.InsertOne(ctx, newAt)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: to: insert", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					sendMsg(fmt.Sprintf(
+						"Вы отправили вомбата атаковать %s. Ждём ответа!\nОтменить можно командой `атака отмена`",
+						tWomb.Name), peer, bot)
+					sendMsg(fmt.Sprintf(
+						"Ужас! Вас атакует %s. Предпримите какие-нибудь меры: отмените атаку (`атака отмена`) или примите (`атака принять`)",
+						womb.Name), tWomb.ID, bot)
+				case "статус":
+					var ID int64
+					if al == 1 {
+						if !isInUsers {
+							sendMsg("Но у вас вомбата нет...", peer, bot)
+							return
+						}
+						ID = int64(from)
+					} else if al > 2 {
+						sendMsg("Атака статус: слишком много аргументов", peer, bot)
+						return
+					} else {
+						strID := args[1]
+						if wid, err := strconv.ParseInt(strID, 10, 64); err == nil {
+							rCount, err = users.CountDocuments(ctx, bson.M{"_id": wid})
+							if err != nil {
+								replyToMsg(messID, errStart+"attack: to: count_to", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							if rCount == 0 {
+								sendMsg(fmt.Sprintf("Ошибка: пользователя с ID %d не существует", wid), peer, bot)
+								return
+							}
+							ID = wid
+						} else if wid, ok := womb.Subs[strID]; ok {
+							ID = wid
+						} else if !ok {
+							if len([]rune(strID)) > 64 {
+								replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+								return
+							}
+							replyToMsg(messID, fmt.Sprintf("Ошибка: подписчика с алиасом `%s` не найдено", strID), peer, bot)
+							return
+						} else {
+							replyToMsg(messID, errStart+"attack: to: else", peer, bot)
+							rlog.Println("Error: ", "attack: to: else")
+							return
+						}
+					}
+					var at Attack
+					if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
+						a, err := getAttackByWomb(int(ID), true, attacks)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: status: to_at", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						at = a
+					} else if is {
+						a, err := getAttackByWomb(from, false, attacks)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: status: from_at", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						at = a
+					} else {
+						sendMsg(fmt.Sprintf("Атаки с вомбатом с ID %d не найдено...", ID), peer, bot)
+						return
+					}
+					var fromWomb, toWomb User
+					err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&fromWomb)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: status: find_fromWomb", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&toWomb)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: status: finf_towomb", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					sendMsg(fmt.Sprintf(
+						"От: %s (%d)\nКому: %s (%d)\n",
+						fromWomb.Name, fromWomb.ID,
+						toWomb.Name, toWomb.ID,
+					), peer, bot)
+				case "отмена":
+					if al > 1 {
+						sendMsg("атака отмена: слишком много аргументов", peer, bot)
+					} else if !isInUsers {
+						sendMsg("какая атака, у тебя вобмата нет", peer, bot)
+					}
+					var at Attack
+					if is, isFrom := isInAttacks(from, attacks); isFrom {
+						a, err := getAttackByWomb(from, true, attacks)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: cancel: to_at", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						at = a
+					} else if is {
+						a, err := getAttackByWomb(from, false, attacks)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: cancel: from_at", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						at = a
+					} else {
+						sendMsg("Атаки с вами не найдено...", peer, bot)
+						return
+					}
+					_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: cancel: delete", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					if at.From == int64(from) {
+						sendMsg("Вы отменили атаку", peer, bot)
+						sendMsg(fmt.Sprintf("Вомбат %s решил вернуть вомбата добой. Вы свободны от атак", womb.Name), at.To, bot)
+					} else {
+						sendMsg("Вы отклонили атаку", peer, bot)
+						sendMsg(fmt.Sprintf(
+							"Вомбат %s вежливо отказал вам в войне. Вам пришлось забрать вомбата обратно. Вы свободны от атак",
+							womb.Name), at.From, bot)
+					}
+				case "принять":
+					if al > 2 {
+						sendMsg("Атака статус: слишком много аргументов", peer, bot)
+						return
+					} else if !isInUsers {
+						sendMsg("Но у вас вомбата нет...", peer, bot)
+						return
+					}
+					var at Attack
+					if is, isFrom := isInAttacks(from, attacks); isFrom {
+						sendMsg("Ну ты чо... атаку принимает тот, кого атакуют...", peer, bot)
+					} else if is {
+						a, err := getAttackByWomb(from, false, attacks)
+						if err != nil {
+							replyToMsg(messID, errStart+"attack: cancel: from_at", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						at = a
+					} else {
+						sendMsg("Вам нечего принимать...", peer, bot)
+						return
+					}
+					rCount, err = users.CountDocuments(ctx, bson.M{"_id": at.From})
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: accept: count_from", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					} else if rCount < 1 {
+						sendMsg("Ну ты чаво... Соперника не существует! Как вообще мы такое допустили?! (ответь на это командой /admin",
+							peer, bot)
+						return
+					}
+					var tWomb User
+					err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&tWomb)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: accept: find_from", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					war1 := sendMsg("Да начнётся вомбой!", peer, bot)
+					war2 := sendMsg(fmt.Sprintf(
+						"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
+						womb.Name), tWomb.ID, bot,
+					)
+					time.Sleep(5 * time.Second)
+					h1, h2 := int(womb.Health), int(tWomb.Health)
+					for _, round := range []int{1, 2, 3} {
+						f1 := uint32(2 + rand.Intn(int(womb.Force-1)))
+						f2 := uint32(2 + rand.Intn(int(tWomb.Force-1)))
+						editMsg(war1, fmt.Sprintf(
+							"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n -Ваш удар: %d\n\n%s:\n - здоровье: %d",
+							round, h1, f1, tWomb.Name, h2), peer, bot)
+						editMsg(war2, fmt.Sprintf(
+							"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n - Ваш удар: %d\n\n%s:\n - здоровье: %d",
+							round, h2, f2, womb.Name, h1), tWomb.ID, bot)
+						time.Sleep(3 * time.Second)
+						h1 -= int(f2)
+						h2 -= int(f1)
+						editMsg(war1, fmt.Sprintf(
+							"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n - Ваш удар: %d\n\n%s:\n - здоровье: %d\n - 💔 удар: %d",
+							round, h1, f1, tWomb.Name, h2, f2), peer, bot)
+						editMsg(war2, fmt.Sprintf(
+							"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n - Ваш удар: %d\n\n%s:\n - здоровье: %d\n - 💔 удар: %d",
+							round, h2, f2, womb.Name, h1, f1), tWomb.ID, bot)
+						time.Sleep(5 * time.Second)
+						if int(h2)-int(f1) <= 5 && int(h1)-int(f2) <= 5 {
+							editMsg(war1,
+								"Вы оба сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
+								peer, bot)
+							editMsg(war2,
+								"Вы оба сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
+								tWomb.ID, bot)
+							time.Sleep(5 * time.Second)
+							break
+						} else if int(h2)-int(f1) <= 5 {
+							editMsg(war1, fmt.Sprintf(
+								"В раунде %d благодаря своей силе победил вомбат...",
+								round), peer, bot)
+							editMsg(war2, fmt.Sprintf(
+								"В раунде %d благодаря лишению у другого здоровья победил вомбат...",
+								round), tWomb.ID, bot)
+							time.Sleep(3 * time.Second)
+							h1c := int(womb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+							f1c := int(womb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+							mc := int((rand.Intn(int(womb.Health)) + 1) / 2)
+							womb.Health += uint32(h1c)
+							womb.Force += uint32(f1c)
+							womb.Money += uint64(mc)
+							womb.XP += 10
+							editMsg(war1, fmt.Sprintf(
+								"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+								womb.Name, h1c, f1c, mc, womb.XP, womb.Health, womb.Force, womb.Money), peer, bot)
+							tWomb.Health = 5
+							tWomb.Money = 50
+							editMsg(war2, fmt.Sprintf(
+								"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей :(",
+								womb.Name), tWomb.ID, bot)
+							break
+						} else if int(h1)-int(f2) <= 5 {
+							editMsg(war1, fmt.Sprintf(
+								"В раунде %d благодаря своей силе победил вомбат...",
+								round), peer, bot)
+							editMsg(war2, fmt.Sprintf(
+								"В раунде %d благодаря лишению у другого здоровья победил вомбат...",
+								round), tWomb.ID, bot)
+							time.Sleep(3 * time.Second)
+							h2c := int(tWomb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+							f2c := int(tWomb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+							mc := int((rand.Intn(int(tWomb.Health)) + 1) / 2)
+							tWomb.Health += uint32(h2c)
+							tWomb.Force += uint32(f2c)
+							tWomb.Money += uint64(mc)
+							tWomb.XP += 10
+							editMsg(war2, fmt.Sprintf(
+								"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+								tWomb.Name, h2c, f2c, mc, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), tWomb.ID, bot)
+							womb.Health = 5
+							womb.Money = 50
+							editMsg(war1, fmt.Sprintf(
+								"Победил вомбат %s!!!\nВаше здоровье сбросилось до 5, а ещё у вас теперь только 50 шишей :(",
+								tWomb.Name), peer, bot)
+							break
+						} else if round == 3 {
+							if h1 < h2 {
+								h2c := int(tWomb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+								f2c := int(tWomb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+								mc := int((rand.Intn(int(tWomb.Health)) + 1) / 2)
+								tWomb.Health += uint32(h2c)
+								tWomb.Force += uint32(f2c)
+								tWomb.Money += uint64(mc)
+								tWomb.XP += 10
+								editMsg(war2, fmt.Sprintf(
+									"И победил вомбат %s на раунде %d!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+									tWomb.Name, round, h2c, f2c, mc, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), tWomb.ID, bot)
+								womb.Health = uint32(h1)
+								womb.Money = 50
+								editMsg(war1, fmt.Sprintf(
+									"И победил вомбат %s на раунде %d!\n К сожалению, теперь у вас только %d здоровья и 50 шишей :(",
+									tWomb.Name, round, womb.Health), peer, bot)
+							} else {
+								h1c := int(womb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+								f1c := int(womb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+								mc := int((rand.Intn(int(womb.Health)) + 1) / 2)
+								womb.Health += uint32(h1c)
+								womb.Force += uint32(f1c)
+								womb.Money += uint64(mc)
+								womb.XP += 10
+								editMsg(war1, fmt.Sprintf(
+									"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+									womb.Name, h1c, f1c, mc, womb.XP, womb.Health, womb.Force, womb.Money), peer, bot)
+								tWomb.Health = 5
+								tWomb.Money = 50
+								editMsg(war2, fmt.Sprintf(
+									"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей :(",
+									womb.Name), tWomb.ID, bot)
+							}
+						}
+					}
+					err = docUpd(womb, wFil, users)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: accept: update_to", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					docUpd(tWomb, bson.M{"_id": tWomb.ID}, users)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: accept: update_from", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: accept: delete", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+				default:
+					replyToMsg(messID, "Фигня какая-то, не понимаю", peer, bot)
 				}
 			}
-
 		}(update, titles, titlesC, bot)
 	}
 }
