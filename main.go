@@ -617,7 +617,7 @@ func main() {
 							}
 							at = a
 						} else {
-							replyToMsg(messID, fmt.Sprintf("Атаки с вомбатом с ID %d не найдено...", ID), peer, bot)
+							replyToMsg(messID, "Атак нет", peer, bot)
 							return
 						}
 						var fromWomb, toWomb User
@@ -641,7 +641,7 @@ func main() {
 					case "атака":
 						replyToMsg(messID, strings.Repeat("атака ", 42), peer, bot)
 					default:
-						replyToMsg(messID, "В группах работает только `статус`...", peer, bot)
+						replyToMsg(messID, "В группах работает только `статус` и `атака`...", peer, bot)
 					}
 				}
 			}(update, titles, titlesC, bot)
@@ -1567,7 +1567,7 @@ func main() {
 						}
 						at = a
 					} else {
-						sendMsg(fmt.Sprintf("Атаки с вомбатом с ID %d не найдено...", ID), peer, bot)
+						sendMsg("Атак нет", peer, bot)
 						return
 					}
 					var fromWomb, toWomb User
