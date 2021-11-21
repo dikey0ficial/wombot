@@ -41,6 +41,7 @@ type User struct { // параметры юзера
 	Money  uint64   `bson:"money"`
 	Titles []uint16 `bson:"titles"`
 	Subs   map[string]int64
+	Sleep  bool `bson:"sleep"`
 }
 
 // Attack реализует атаку
@@ -471,10 +472,16 @@ func main() {
 					} else {
 						strTitles = "нет"
 					}
+					var sl string = "Не спит"
+					if womb.Sleep {
+						sl = "Спит"
+					} else {
+						sl = "Не спит"
+					}
 					link := fmt.Sprintf("tg://user?id=%d", ID)
 					replyToMsgMD(messID, fmt.Sprintf(
-						"Вомбат  [%s](%s)  (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
-						tWomb.Name, link, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money),
+						"Вомбат  [%s](%s) (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+						tWomb.Name, link, ID, sl, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money),
 						peer, bot,
 					)
 				} else if strings.HasPrefix(strings.ToLower(txt), "хрю") {
@@ -657,7 +664,7 @@ func main() {
 
 			womb := User{}
 
-			wFil := bson.M{"_id": peer}
+			wFil := bson.M{"_id": from}
 
 			rCount, err := users.CountDocuments(ctx, wFil)
 			checkerr(err)
@@ -693,6 +700,7 @@ func main() {
 						Money:  10,
 						Titles: []uint16{},
 						Subs:   map[string]int64{},
+						Sleep:  false,
 					}
 					_, err = users.InsertOne(ctx, &newWomb)
 					if err != nil {
@@ -1157,8 +1165,14 @@ func main() {
 				} else {
 					strTitles = "нет"
 				}
-				sendMsgMD(fmt.Sprintf("Вомбат  %s (ID: %d)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
-					tWomb.Name, ID, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
+				var sl string
+				if womb.Sleep {
+					sl = "Спит"
+				} else {
+					sl = "Не спит"
+				}
+				sendMsgMD(fmt.Sprintf("Вомбат %s (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+					tWomb.Name, ID, sl, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
 				)
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
 				sendMsgMD("https://telegra.ph/O-vombote-10-29\n**если вы хотели узнать характеристики вомбата, используйте команду `о вомбате`**",
@@ -1368,6 +1382,9 @@ func main() {
 					} else if !isInUsers {
 						sendMsg("Вы не можете атаковать в виду остутствия вомбата", peer, bot)
 						return
+					} else if womb.Sleep {
+						sendMsg("Но вы же спите...", peer, bot)
+						return
 					}
 					strID := args[1]
 					var (
@@ -1453,6 +1470,18 @@ func main() {
 					if ID == int64(from) {
 						sendMsg("„Основная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", peer, bot)
 						return
+					}
+					err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: to: is_to_sleep", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					if tWomb.Sleep {
+						sendMsg(fmt.Sprintf(
+							"Вомбат %s спит. Его атаковать не получится",
+							tWomb.Name), peer, bot)
+						return
 					} else if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
 						at, err := getAttackByWomb(int(ID), true, attacks)
 						if err != nil && err != errNoAttack {
@@ -1487,8 +1516,8 @@ func main() {
 							return
 						}
 						sendMsgMD(fmt.Sprintf(
-							"Вомбат %s (ID: %d) уже атакуется %s. Попросите %s решить данную проблему",
-							aWomb.Name, aWomb.ID, strID, strID),
+							"Вомбат %s уже атакуется %s (ID: %d). Попросите %s решить данную проблему",
+							strID, aWomb.Name, aWomb.ID, strID),
 							peer, bot)
 						return
 					}
@@ -1808,8 +1837,86 @@ func main() {
 						return
 					}
 				default:
-					replyToMsg(messID, "Фигня какая-то, не понимаю", peer, bot)
+					replyToMsg(messID, "не понимаю!", peer, bot)
 				}
+			} else if isInList(txt, []string{"лечь спать", "споке", "спать", "споть"}) {
+				if !isInUsers {
+					sendMsg("У тебя нет вомбата, иди спи сам", peer, bot)
+					return
+				} else if womb.Sleep {
+					sendMsg("Твой вомбат уже спит. Если хочешь проснуться, то напиши `проснуться` (логика)", peer, bot)
+					return
+				}
+				womb.Sleep = true
+				err = docUpd(womb, wFil, users)
+				if err != nil {
+					replyToMsg(messID, errStart+"go_sleep: update", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				sendMsg("Вы легли спать. Спокойного сна!", peer, bot)
+			} else if isInList(txt, []string{"добрутро", "проснуться", "не спать", "не споть", "рота подъём"}) {
+				if !isInUsers {
+					sendMsg("У тебя нет вомбата, буди себя сам", peer, bot)
+					return
+				} else if !womb.Sleep {
+					sendMsg("Твой вомбат и так не спит, может ты хотел лечь спать? (команда `лечь спать` (опять логика))",
+						peer, bot)
+					return
+				}
+				womb.Sleep = false
+				var msg string = "Вомбат проснулся без каких-либо проишествий"
+				rand.Seed(time.Now().UnixNano())
+				if rand.Intn(2) == 1 {
+					switch rand.Intn(9) {
+					case 0:
+						i := uint32(rand.Intn(15) + 1)
+						womb.Health += i
+						msg = fmt.Sprintf("Вомбат отлично выспался. Офигенный сон ему дал %d здоровья", i)
+					case 1:
+						i := uint32(rand.Intn(10) + 1)
+						womb.Force += i
+						msg = fmt.Sprintf("Встав, вомбат почувствовал силу в своих лапах! +%d мощи", i)
+					case 3:
+						i := uint64(rand.Intn(100) + 1)
+						womb.Money += i
+						msg = fmt.Sprintf("Проснувшись, вомбат увидел мешок, содержащий %d шишей. Кто бы мог его оставить?", i)
+					case 4:
+						if womb.Money > 50 {
+							womb.Money = 50
+						} else if womb.Money > 10 {
+							womb.Money = 10
+						} else {
+							break
+						}
+						msg = fmt.Sprintf("Ужас!!! Вас обокрали!!! У вас теперь только %d шишей!", womb.Money)
+					case 5:
+						if womb.Health <= 5 {
+							break
+						}
+						womb.Health--
+						msg = "Шатаясь, вомбат встал с кровати. Он себя чувствует ужасно. -1 здоровья"
+					case 6:
+						if womb.Force <= 2 {
+							break
+						}
+						womb.Force--
+						msg = "Ваш вомбат чувствует слабость... -1 мощи"
+					case 7:
+						msg = "Ваш вомбат встал и загадочно улыбнулся..."
+					case 8:
+						i := uint32(rand.Intn(4) + 1)
+						womb.XP += i
+						msg = fmt.Sprintf("Ваш вомбат увидел странный сон. Почесав подбородок, он получает %d XP", i)
+					}
+				}
+				err := docUpd(womb, wFil, users)
+				if err != nil {
+					replyToMsg(messID, errStart+"get_up: update", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				sendMsg(msg, peer, bot)
 			}
 		}(update, titles, titlesC, bot)
 	}
