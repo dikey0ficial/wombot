@@ -473,7 +473,7 @@ func main() {
 						strTitles = "нет"
 					}
 					var sl string = "Не спит"
-					if womb.Sleep {
+					if tWomb.Sleep {
 						sl = "Спит"
 					} else {
 						sl = "Не спит"
@@ -1166,7 +1166,7 @@ func main() {
 					strTitles = "нет"
 				}
 				var sl string
-				if womb.Sleep {
+				if tWomb.Sleep {
 					sl = "Спит"
 				} else {
 					sl = "Не спит"
