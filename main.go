@@ -147,7 +147,7 @@ func isPrefixInList(txt string, list []string) bool {
 }
 
 // toDoc _
-func toDoc(v interface{}) (doc *bson.D, err error) {
+func toDoc(v interface{}) (doc *bson.M, err error) {
 	data, err := bson.Marshal(v)
 	if err != nil {
 		return
@@ -650,6 +650,93 @@ func main() {
 					default:
 						replyToMsg(messID, "В группах работает только `статус` и `атака`...", peer, bot)
 					}
+				} else if isPrefixInList(txt, []string{"рейтинг", "топ"}) {
+					args := strings.Fields(strings.ToLower(txt))
+					if args[0] != "рейтинг" && args[0] != "топ" {
+						return
+					}
+					var (
+						name  string = "xp"
+						queue int8   = -1
+					)
+					if len(args) >= 2 && len(args) < 4 {
+						if isInList(args[1], []string{"шиши", "деньги", "money"}) {
+							name = "money"
+						} else if isInList(args[1], []string{"хп", "опыт", "xp", "хрю"}) {
+							name = "xp"
+						} else if isInList(args[1], []string{"здоровье", "хил", "хеалтх", "health"}) {
+							name = "health"
+						} else if isInList(args[1], []string{"сила", "мощь", "force", "мощъ"}) {
+							name = "force"
+						} else {
+							replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[1]), peer, bot)
+							return
+						}
+						if len(args) == 3 {
+							if isInList(args[2], []string{"+", "плюс", "++", "увеличение"}) {
+								queue = 1
+							} else if isInList(args[2], []string{"-", "минус", "--", "уменьшение"}) {
+								queue = -1
+							} else {
+								replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
+								return
+							}
+						}
+					} else if len(args) != 1 {
+						replyToMsg(messID, "слишком много аргументов", peer, bot)
+						return
+					}
+					opts := options.Find()
+					opts.SetSort(bson.M{name: queue})
+					opts.SetLimit(10)
+					cur, err := users.Find(ctx, bson.M{}, opts)
+					if err != nil {
+						replyToMsg(messID, errStart+"rating: find", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					var rating []User
+					for cur.Next(ctx) {
+						var w User
+						cur.Decode(&w)
+						rating = append(rating, w)
+					}
+					var msg string = fmt.Sprintf("Топ-10 вомбатов по ")
+					switch name {
+					case "money":
+						msg += "шишам "
+					case "xp":
+						msg += "XP "
+					case "health":
+						msg += "здоровью "
+					case "force":
+						msg += "мощи "
+					}
+					msg += "в порядке "
+					if queue == 1 {
+						msg += "увеличения:"
+					} else if queue == -1 {
+						msg += "уменьшения:"
+					} else {
+						replyToMsg(messID, errStart+"rating: queue else", peer, bot)
+						rlog.Println("Error: rating: queue else")
+						return
+					}
+					msg += "\n"
+					for num, w := range rating {
+						switch name {
+						case "money":
+							msg += fmt.Sprintf("%d | %s (ID: %d) | %d шишей\n", num+1, w.Name, w.ID, w.Money)
+						case "xp":
+							msg += fmt.Sprintf("%d | %s (ID: %d) | %d XP\n", num+1, w.Name, w.ID, w.XP)
+						case "health":
+							msg += fmt.Sprintf("%d | %s (ID: %d) | %d здоровья\n", num+1, w.Name, w.ID, w.Health)
+						case "force":
+							msg += fmt.Sprintf("%d | %s (ID: %d) | %d мощи\n", num+1, w.Name, w.ID, w.Force)
+						}
+					}
+					msg = strings.TrimSuffix(msg, "\n")
+					replyToMsg(messID, msg, peer, bot)
 				}
 			}(update, titles, titlesC, bot)
 			continue
@@ -1166,7 +1253,7 @@ func main() {
 					strTitles = "нет"
 				}
 				var sl string
-				if tWomb.Sleep {
+				if womb.Sleep {
 					sl = "Спит"
 				} else {
 					sl = "Не спит"
@@ -1265,7 +1352,7 @@ func main() {
 				users = *(db.Collection("users"))
 				attacks = *(db.Collection("attacks"))
 				titlesC := *(db.Collection("titles"))
-				cur, err := titlesC.Find(ctx, bson.D{})
+				cur, err := titlesC.Find(ctx, bson.M{})
 				defer cur.Close(ctx)
 				if err != nil {
 					replyToMsg(messID, errStart+"update_data: titles", peer, bot)
@@ -1916,6 +2003,93 @@ func main() {
 					rlog.Println("Error: ", err)
 					return
 				}
+				sendMsg(msg, peer, bot)
+			} else if isPrefixInList(txt, []string{"рейтинг", "топ"}) {
+				args := strings.Fields(strings.ToLower(txt))
+				if args[0] != "рейтинг" && args[0] != "топ" {
+					return
+				}
+				var (
+					name  string = "xp"
+					queue int8   = -1
+				)
+				if len(args) >= 2 && len(args) < 4 {
+					if isInList(args[1], []string{"шиши", "деньги", "money"}) {
+						name = "money"
+					} else if isInList(args[1], []string{"хп", "опыт", "xp", "хрю"}) {
+						name = "xp"
+					} else if isInList(args[1], []string{"здоровье", "хил", "хеалтх", "health"}) {
+						name = "health"
+					} else if isInList(args[1], []string{"сила", "мощь", "force", "мощъ"}) {
+						name = "force"
+					} else {
+						replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[1]), peer, bot)
+						return
+					}
+					if len(args) == 3 {
+						if isInList(args[2], []string{"+", "плюс", "++", "увеличение"}) {
+							queue = 1
+						} else if isInList(args[2], []string{"-", "минус", "--", "уменьшение"}) {
+							queue = -1
+						} else {
+							replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
+							return
+						}
+					}
+				} else if len(args) != 1 {
+					replyToMsg(messID, "слишком много аргументов", peer, bot)
+					return
+				}
+				opts := options.Find()
+				opts.SetSort(bson.M{name: queue})
+				opts.SetLimit(10)
+				cur, err := users.Find(ctx, bson.M{}, opts)
+				if err != nil {
+					replyToMsg(messID, errStart+"rating: find", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				var rating []User
+				for cur.Next(ctx) {
+					var w User
+					cur.Decode(&w)
+					rating = append(rating, w)
+				}
+				var msg string = fmt.Sprintf("Топ-10 вомбатов по ")
+				switch name {
+				case "money":
+					msg += "шишам "
+				case "xp":
+					msg += "XP "
+				case "health":
+					msg += "здоровью "
+				case "force":
+					msg += "мощи "
+				}
+				msg += "в порядке "
+				if queue == 1 {
+					msg += "увеличения:"
+				} else if queue == -1 {
+					msg += "уменьшения:"
+				} else {
+					replyToMsg(messID, errStart+"rating: queue else", peer, bot)
+					rlog.Println("Error: rating: queue else")
+					return
+				}
+				msg += "\n"
+				for num, w := range rating {
+					switch name {
+					case "money":
+						msg += fmt.Sprintf("%d | %s (ID: %d) | %d шишей\n", num+1, w.Name, w.ID, w.Money)
+					case "xp":
+						msg += fmt.Sprintf("%d | %s (ID: %d) | %d XP\n", num+1, w.Name, w.ID, w.XP)
+					case "health":
+						msg += fmt.Sprintf("%d | %s (ID: %d) | %d здоровья\n", num+1, w.Name, w.ID, w.Health)
+					case "force":
+						msg += fmt.Sprintf("%d | %s (ID: %d) | %d мощи\n", num+1, w.Name, w.ID, w.Force)
+					}
+				}
+				msg = strings.TrimSuffix(msg, "\n")
 				sendMsg(msg, peer, bot)
 			}
 		}(update, titles, titlesC, bot)
