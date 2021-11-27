@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"os"
 	// "sort"
-	tg "github.com/go-telegram-bot-api/telegram-bot-api"
+	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	jsoniter "github.com/json-iterator/go"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -23,6 +23,7 @@ type Config struct {
 	Token     string `json:"tg_token"`
 	MongoURL  string `json:"mongo_url"`
 	SupChatID int64  `json:"support_chat_id"`
+	Debug     bool   `json:"debug"`
 }
 
 // Title — описание титула
@@ -49,6 +50,12 @@ type Attack struct {
 	ID   string `bson:"_id"`
 	From int64  `bson:"from"`
 	To   int64  `bson:"to"`
+}
+
+// Imgs реализует группу картинок
+type Imgs struct {
+	ID     string   `bson:"_id"`
+	Images []string `bson:"imgs"`
 }
 
 var ctx = context.TODO()
@@ -158,7 +165,7 @@ func toDoc(v interface{}) (doc *bson.M, err error) {
 }
 
 // docUpd _
-func docUpd(v User, filter bson.M, col mongo.Collection) error {
+func docUpd(v User, filter bson.M, col *mongo.Collection) error {
 	doc, err := toDoc(v)
 	if err != nil {
 		return err
@@ -197,12 +204,21 @@ func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	return mess.MessageID
 }
 
-// replyToMsgMD отвечает сообщением с markdown
+// replyToMsgMDNL отвечает сообщением с markdown без ссылок
 func replyToMsgMDNL(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
 	msg.ParseMode = "markdown"
 	msg.DisableWebPagePreview = true
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
+// sendPhoto отправляет текст с картинкой
+func sendPhoto(id, caption string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewPhoto(chatID, tg.FileID(id))
+	msg.Caption = caption
 	mess, err := bot.Send(msg)
 	checkerr(err)
 	return mess.MessageID
@@ -220,7 +236,7 @@ func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int
 
 // isInAttacks возвращает информацию, еслть ли существо в атаках и
 // отправитель ли он
-func isInAttacks(id int, attacks mongo.Collection) (isIn, isFrom bool) {
+func isInAttacks(id int64, attacks *mongo.Collection) (isIn, isFrom bool) {
 	if f, err := attacks.CountDocuments(ctx, bson.M{"from": id}); f > 0 && err == nil {
 		isFrom = true
 	} else if err != nil {
@@ -238,7 +254,7 @@ func isInAttacks(id int, attacks mongo.Collection) (isIn, isFrom bool) {
 
 var errNoAttack error = fmt.Errorf("there aren't any attacks")
 
-func getAttackByID(aid string, attacks mongo.Collection) (at Attack, err error) {
+func getAttackByID(aid string, attacks *mongo.Collection) (at Attack, err error) {
 	c, err := attacks.CountDocuments(ctx, bson.M{"_id": aid})
 	if err != nil {
 		return Attack{}, err
@@ -252,7 +268,7 @@ func getAttackByID(aid string, attacks mongo.Collection) (at Attack, err error) 
 	return at, nil
 }
 
-func getAttackByWomb(id int, isFrom bool, attacks mongo.Collection) (at Attack, err error) {
+func getAttackByWomb(id int64, isFrom bool, attacks *mongo.Collection) (at Attack, err error) {
 	var (
 		fil bson.M
 	)
@@ -280,7 +296,7 @@ func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
 		ChatID:    chatID,
 		MessageID: ID,
 	}
-	_, err := bot.DeleteMessage(delConfig)
+	_, err := bot.Request(delConfig)
 	checkerr(err)
 }
 
@@ -292,8 +308,25 @@ func editMsg(mid int, txt string, chatID int64, bot *tg.BotAPI) {
 		},
 		Text: txt,
 	}
-	_, err := bot.Send(editConfig)
+	_, err := bot.Request(editConfig)
 	checkerr(err)
+}
+
+var errNoImgs = fmt.Errorf("getImgs: no groups with this name")
+
+func getImgs(imgsC *mongo.Collection, name string) (imgs Imgs, err error) {
+	if rCount, err := imgsC.CountDocuments(ctx, bson.M{"_id": name}); err != nil {
+		return imgs, err
+	} else if rCount == 0 {
+		return imgs, errNoImgs
+	}
+	err = imgsC.FindOne(ctx, bson.M{"_id": name}).Decode(&imgs)
+	return imgs, err
+}
+
+func randImg(imgs Imgs) string {
+	rand.Seed(time.Now().Unix())
+	return imgs.Images[rand.Intn(len(imgs.Images))]
 }
 
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов",
@@ -306,16 +339,15 @@ func main() {
 	checkerr(err)
 	defer mongoClient.Disconnect(ctx)
 
-	db := *(mongoClient.Database("wombot"))
+	db := mongoClient.Database("wombot")
 
-	users := *(db.Collection("users"))
+	users := db.Collection("users")
 
-	attacks := *(db.Collection("attacks"))
-	func(a mongo.Collection) {}(attacks)
+	attacks := db.Collection("attacks")
 
-	titles := []Title{}
+	var titles []Title
 
-	titlesC := *(db.Collection("titles"))
+	titlesC := db.Collection("titles")
 	cur, err := titlesC.Find(ctx, bson.M{})
 	defer cur.Close(ctx)
 	checkerr(err)
@@ -332,7 +364,7 @@ func main() {
 
 	u := tg.NewUpdate(0)
 	u.Timeout = 1
-	updates, err := bot.GetUpdatesChan(u)
+	updates := bot.GetUpdatesChan(u)
 	checkerr(err)
 	fmt.Println("Start!")
 
@@ -340,6 +372,9 @@ func main() {
 
 	for update := range updates {
 		if update.Message == nil {
+			continue
+		} else if update.Message.Photo != nil && conf.Debug {
+			log.Println((update.Message.Photo)[0].FileID)
 			continue
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
@@ -374,22 +409,26 @@ func main() {
 			}(update, bot)
 			continue
 		} else if update.Message.Chat.ID != int64(update.Message.From.ID) {
-			go func(update tg.Update, titles []Title, titlesC mongo.Collection, bot *tg.BotAPI) {
+			go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI) {
 				peer, from := update.Message.Chat.ID, update.Message.From.ID
 				txt, messID := update.Message.Text, update.Message.MessageID
-				users = *(db.Collection("users"))
+				users = db.Collection("users")
 
 				womb := User{}
 				wFil := bson.M{"_id": from}
 				rCount, err := users.CountDocuments(ctx, wFil)
 				if err != nil {
-					sendMsg(errStart+"isInUsers: count_womb", peer, bot)
+					replyToMsg(messID, errStart+"isInUsers: count_womb", peer, bot)
+					rlog.Println("Error: ", err)
+					return
 				}
 				isInUsers := rCount != 0
 				if isInUsers {
 					err = users.FindOne(ctx, wFil).Decode(&womb)
 					if err != nil {
 						replyToMsg(messID, errStart+"womb: find_womb", peer, bot)
+						rlog.Println("Error: ", err)
+						return
 					}
 				}
 
@@ -607,8 +646,8 @@ func main() {
 							}
 						}
 						var at Attack
-						if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
-							a, err := getAttackByWomb(int(ID), true, attacks)
+						if is, isFrom := isInAttacks(ID, attacks); isFrom {
+							a, err := getAttackByWomb(ID, true, attacks)
 							if err != nil {
 								replyToMsg(messID, errStart+"attack: status: to_at", peer, bot)
 								rlog.Println("Error: ", err)
@@ -741,13 +780,11 @@ func main() {
 			}(update, titles, titlesC, bot)
 			continue
 		}
-		go func(update tg.Update, titles []Title, titlesC mongo.Collection, bot *tg.BotAPI) {
+		go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI) {
 			peer, from := update.Message.Chat.ID, update.Message.From.ID
 			txt, messID := update.Message.Text, update.Message.MessageID
-			if from == messID {
-				fmt.Println("AAAAAAAAAAAAAA")
-			}
-			users = *(db.Collection("users"))
+			users = db.Collection("users")
+			imgsC := db.Collection("imgs")
 
 			womb := User{}
 
@@ -755,10 +792,19 @@ func main() {
 
 			rCount, err := users.CountDocuments(ctx, wFil)
 			checkerr(err)
+			if err != nil {
+				replyToMsg(messID, errStart+"isInUsers: count_womb", peer, bot)
+				rlog.Println("Error: ", err)
+				return
+			}
 			isInUsers := rCount != 0
 			if isInUsers {
 				err = users.FindOne(ctx, wFil).Decode(&womb)
-				checkerr(err)
+				if err != nil {
+					replyToMsg(messID, errStart+"womb: find_womb", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
 			}
 
 			rlog.Printf("MESSAGE p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name, txt)
@@ -1349,9 +1395,9 @@ func main() {
 					}
 				}
 			} else if txt == "обновить данные" && hasTitle(0, womb.Titles) {
-				users = *(db.Collection("users"))
-				attacks = *(db.Collection("attacks"))
-				titlesC := *(db.Collection("titles"))
+				users = db.Collection("users")
+				attacks = db.Collection("attacks")
+				titlesC := db.Collection("titles")
 				cur, err := titlesC.Find(ctx, bson.M{})
 				defer cur.Close(ctx)
 				if err != nil {
@@ -1371,12 +1417,19 @@ func main() {
 					titles = append(titles, nextOne)
 				}
 				cur.Close(ctx)
+				imgsC = db.Collection("imgs")
 				sendMsg("Успешно обновлено!", peer, bot)
 				rlog.Printf("DATA_UPDATE %d\n", peer)
 				fmt.Printf("Data update by %d\n", peer)
 			} else if isInList(txt, []string{"купить квес", "купить квесс", "купить qwess", "попить квес", "попить квесс", "попить qwess"}) {
 				if isInUsers {
 					if womb.Money >= 256 {
+						qwess, err := getImgs(imgsC, "qwess")
+						if err != nil {
+							replyToMsg(messID, errStart+"nyamka: get_qwess_imgs", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
 						if !(hasTitle(2, womb.Titles)) {
 							womb.Titles = append(womb.Titles, 2)
 							womb.Money -= 256
@@ -1386,7 +1439,8 @@ func main() {
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(
+							sendPhoto(
+								randImg(qwess),
 								"Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2",
 								peer, bot,
 							)
@@ -1398,13 +1452,26 @@ func main() {
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(
+							if err != nil {
+								replyToMsg(messID, errStart+"nyamka: get_leps_imgs", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							sendPhoto(
+								randImg(qwess),
 								"Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!",
 								peer, bot,
 							)
 						}
 					} else {
-						sendMsg(
+						leps, err := getImgs(imgsC, "leps")
+						if err != nil {
+							replyToMsg(messID, errStart+"nyamka: get_leps_imgs", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendPhoto(
+							randImg(leps),
 							"Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше",
 							peer, bot,
 						)
@@ -1569,8 +1636,8 @@ func main() {
 							"Вомбат %s спит. Его атаковать не получится",
 							tWomb.Name), peer, bot)
 						return
-					} else if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
-						at, err := getAttackByWomb(int(ID), true, attacks)
+					} else if is, isFrom := isInAttacks(ID, attacks); isFrom {
+						at, err := getAttackByWomb(ID, true, attacks)
 						if err != nil && err != errNoAttack {
 							replyToMsg(messID, errStart+"attack: to: to_from: get_attack_by_womb", peer, bot)
 							rlog.Println("Error: ", err)
@@ -1609,7 +1676,7 @@ func main() {
 						return
 					}
 					var newAt = Attack{
-						ID:   strconv.Itoa(from) + "_" + strconv.Itoa(int(ID)),
+						ID:   strconv.Itoa(int(from)) + "_" + strconv.Itoa(int(ID)),
 						From: int64(from),
 						To:   ID,
 					}
@@ -1666,8 +1733,8 @@ func main() {
 						}
 					}
 					var at Attack
-					if is, isFrom := isInAttacks(int(ID), attacks); isFrom {
-						a, err := getAttackByWomb(int(ID), true, attacks)
+					if is, isFrom := isInAttacks(ID, attacks); isFrom {
+						a, err := getAttackByWomb(ID, true, attacks)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: status: to_at", peer, bot)
 							rlog.Println("Error: ", err)
@@ -1786,8 +1853,17 @@ func main() {
 						rlog.Println("Error: ", err)
 						return
 					}
-					war1 := sendMsg("Да начнётся вомбой!", peer, bot)
-					war2 := sendMsg(fmt.Sprintf(
+					atimgs, err := getImgs(imgsC, "attacks")
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: accept: imgs", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					im := randImg(atimgs)
+					ph1 := sendPhoto(im, "", peer, bot)
+					ph2 := sendPhoto(im, "", tWomb.ID, bot)
+					war1 := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
+					war2 := replyToMsg(ph2, fmt.Sprintf(
 						"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
 						womb.Name), tWomb.ID, bot,
 					)
@@ -2068,15 +2144,15 @@ func main() {
 				}
 				msg += "в порядке "
 				if queue == 1 {
-					msg += "увеличения:"
+					msg += "увеличения"
 				} else if queue == -1 {
-					msg += "уменьшения:"
+					msg += "уменьшения"
 				} else {
 					replyToMsg(messID, errStart+"rating: queue else", peer, bot)
 					rlog.Println("Error: rating: queue else")
 					return
 				}
-				msg += "\n"
+				msg += ":\n"
 				for num, w := range rating {
 					switch name {
 					case "money":
@@ -2091,6 +2167,9 @@ func main() {
 				}
 				msg = strings.TrimSuffix(msg, "\n")
 				sendMsg(msg, peer, bot)
+			} else if strings.HasPrefix(txt, "sendimg") {
+				id := strings.TrimSpace(strings.TrimPrefix(txt, "sendimg"))
+				sendPhoto(id, "", peer, bot)
 			}
 		}(update, titles, titlesC, bot)
 	}

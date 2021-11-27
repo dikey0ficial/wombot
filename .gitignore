@@ -1,8 +1,5 @@
-/config.json
-/users.json
+/*.json
 /vendor/
 /wombot.exe
 /wombot
 /runtime.log
-/dash/
-/dash/*
