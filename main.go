@@ -224,9 +224,30 @@ func sendPhoto(id, caption string, chatID int64, bot *tg.BotAPI) int {
 	return mess.MessageID
 }
 
+// sendPhotoMD отправляет текст с markdown с картинкой
+func sendPhotoMD(id, caption string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewPhoto(chatID, tg.FileID(id))
+	msg.Caption = caption
+	msg.ParseMode = "markdown"
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
 // replyToMsgMD отвечает сообщением с markdown
 func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
+	msg.ReplyToMessageID = replyID
+	msg.ParseMode = "markdown"
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
+// replyWithPhotoMD отвечает картинкой с текстом с markdown
+func replyWithPhotoMD(replyID int, id, caption string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewPhoto(chatID, tg.FileID(id))
+	msg.Caption = caption
 	msg.ReplyToMessageID = replyID
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
@@ -359,6 +380,8 @@ func main() {
 	}
 	cur.Close(ctx)
 
+	imgsC := db.Collection("imgs")
+
 	bot, err := tg.NewBotAPI(conf.Token)
 	checkerr(err)
 
@@ -368,13 +391,11 @@ func main() {
 	checkerr(err)
 	fmt.Println("Start!")
 
-	const errStart string = "Ошибка... Ответьте командой /admin на это сообщение\n"
-
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		} else if update.Message.Photo != nil && conf.Debug {
-			log.Println((update.Message.Photo)[0].FileID)
+			rlog.Println("img: ", (update.Message.Photo)[0].FileID)
 			continue
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
@@ -408,8 +429,13 @@ func main() {
 
 			}(update, bot)
 			continue
-		} else if update.Message.Chat.ID != int64(update.Message.From.ID) {
-			go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI) {
+		}
+		if update.Message.Chat.ID != int64(update.Message.From.ID) {
+			go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI, users *mongo.Collection,
+				attacks *mongo.Collection, imgsC *mongo.Collection) {
+
+				const errStart string = "Ошибка... Ответьте командой /admin на это сообщение\ngr: "
+
 				peer, from := update.Message.Chat.ID, update.Message.From.ID
 				txt, messID := update.Message.Text, update.Message.MessageID
 				users = db.Collection("users")
@@ -518,8 +544,14 @@ func main() {
 						sl = "Не спит"
 					}
 					link := fmt.Sprintf("tg://user?id=%d", ID)
-					replyToMsgMD(messID, fmt.Sprintf(
-						"Вомбат  [%s](%s) (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+					abimg, err := getImgs(imgsC, "about")
+					if err != nil {
+						replyToMsg(messID, errStart+"about_womb: get_imgs", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					replyWithPhotoMD(messID, randImg(abimg), fmt.Sprintf(
+						"Вомбат [%s](%s) (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
 						tWomb.Name, link, ID, sl, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money),
 						peer, bot,
 					)
@@ -777,14 +809,16 @@ func main() {
 					msg = strings.TrimSuffix(msg, "\n")
 					replyToMsg(messID, msg, peer, bot)
 				}
-			}(update, titles, titlesC, bot)
+			}(update, titles, titlesC, bot, users, attacks, imgsC)
 			continue
 		}
-		go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI) {
+		go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI, users *mongo.Collection,
+			attacks *mongo.Collection, imgsC *mongo.Collection) {
+
 			peer, from := update.Message.Chat.ID, update.Message.From.ID
 			txt, messID := update.Message.Text, update.Message.MessageID
-			users = db.Collection("users")
-			imgsC := db.Collection("imgs")
+
+			const errStart string = "Ошибка... Ответьте командой /admin на это сообщение\n"
 
 			womb := User{}
 
@@ -1304,7 +1338,13 @@ func main() {
 				} else {
 					sl = "Не спит"
 				}
-				sendMsgMD(fmt.Sprintf("Вомбат %s (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+				abimg, err := getImgs(imgsC, "about")
+				if err != nil {
+					replyToMsg(messID, errStart+"about_womb: get_imgs", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				sendPhotoMD(randImg(abimg), fmt.Sprintf("Вомбат %s (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
 					tWomb.Name, ID, sl, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
 				)
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
@@ -2075,7 +2115,7 @@ func main() {
 				}
 				err := docUpd(womb, wFil, users)
 				if err != nil {
-					replyToMsg(messID, errStart+"get_up: update", peer, bot)
+					replyToMsg(messID, errStart+"unsleep: update", peer, bot)
 					rlog.Println("Error: ", err)
 					return
 				}
@@ -2171,6 +2211,6 @@ func main() {
 				id := strings.TrimSpace(strings.TrimPrefix(txt, "sendimg"))
 				sendPhoto(id, "", peer, bot)
 			}
-		}(update, titles, titlesC, bot)
+		}(update, titles, titlesC, bot, users, attacks, imgsC)
 	}
 }
