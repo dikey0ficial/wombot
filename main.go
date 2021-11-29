@@ -395,7 +395,7 @@ func main() {
 		if update.Message == nil {
 			continue
 		} else if update.Message.Photo != nil && conf.Debug {
-			rlog.Println("img: ", (update.Message.Photo)[0].FileID)
+			rlog.Println("img ", (update.Message.Photo)[0].FileID)
 			continue
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
@@ -938,16 +938,22 @@ func main() {
 					}
 					sendMsg("Выдан титул \"Вомботестер\" (ID: 0)", peer, bot)
 				}
-			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз"}) {
+			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз", "убить"}) {
 				if isInUsers {
 					if !(hasTitle(1, womb.Titles)) {
 						_, err = users.DeleteOne(ctx, wFil)
 						if err != nil {
-							replyToMsg(messID, errStart+"delete_womb: delete", peer, bot)
+							replyToMsg(messID, errStart+"kill: delete", peer, bot)
 							rlog.Println("Error: ", err)
 							return
 						}
-						sendMsg("Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, bot)
+						kill, err := getImgs(imgsC, "kill")
+						if err != nil {
+							replyToMsg(messID, errStart+"kill: get_imgs", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						sendPhoto(randImg(kill), "Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", peer, bot)
 					} else {
 						sendMsg("Ошибка: вы лишены права уничтожать вомбата; ответьте на это сообщение командой /admin для объяснений",
 							peer, bot)
@@ -2057,7 +2063,13 @@ func main() {
 					rlog.Println("Error: ", err)
 					return
 				}
-				sendMsg("Вы легли спать. Спокойного сна!", peer, bot)
+				sleep, err := getImgs(imgsC, "sleep")
+				if err != nil {
+					replyToMsg(messID, errStart+"go_sleep: get_imgs", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				sendPhoto(randImg(sleep), "Вы легли спать. Спокойного сна!", peer, bot)
 			} else if isInList(txt, []string{"добрутро", "проснуться", "не спать", "не споть", "рота подъём"}) {
 				if !isInUsers {
 					sendMsg("У тебя нет вомбата, буди себя сам", peer, bot)
@@ -2119,7 +2131,13 @@ func main() {
 					rlog.Println("Error: ", err)
 					return
 				}
-				sendMsg(msg, peer, bot)
+				unsleep, err := getImgs(imgsC, "unsleep")
+				if err != nil {
+					replyToMsg(messID, errStart+"unsleep: get_imgs", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				sendPhoto(randImg(unsleep), msg, peer, bot)
 			} else if isPrefixInList(txt, []string{"рейтинг", "топ"}) {
 				args := strings.Fields(strings.ToLower(txt))
 				if args[0] != "рейтинг" && args[0] != "топ" {
