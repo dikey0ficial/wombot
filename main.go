@@ -255,6 +255,16 @@ func replyWithPhotoMD(replyID int, id, caption string, chatID int64, bot *tg.Bot
 	return mess.MessageID
 }
 
+// replyWithPhotoMD отвечает картинкой с текстом
+func replyWithPhoto(replyID int, id, caption string, chatID int64, bot *tg.BotAPI) int {
+	msg := tg.NewPhoto(chatID, tg.FileID(id))
+	msg.Caption = caption
+	msg.ReplyToMessageID = replyID
+	mess, err := bot.Send(msg)
+	checkerr(err)
+	return mess.MessageID
+}
+
 // isInAttacks возвращает информацию, еслть ли существо в атаках и
 // отправитель ли он
 func isInAttacks(id int64, attacks *mongo.Collection) (isIn, isFrom bool) {
@@ -556,12 +566,18 @@ func main() {
 						peer, bot,
 					)
 				} else if strings.HasPrefix(strings.ToLower(txt), "хрю") {
-					mID := replyToMsg(messID, "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
-					time.Sleep(2 * time.Second)
+					hru, err := getImgs(imgsC, "schweine")
+					if err != nil {
+						replyToMsg(messID, errStart+"schweine: get_imgs", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					mID := replyWithPhoto(messID, randImg(hru), "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
+					time.Sleep(15 * time.Second)
 					delMsg(mID, peer, bot)
-				} else if isInList(txt, []string{"помощь", "хелп", "help", "команды", "/help", "/help@wombatobot"}) {
+				} else if isInList(txt, []string{"помощь", "команды", "/help@wombatobot"}) {
 					replyToMsg(messID, "https://telegra.ph/Pomoshch-10-28", peer, bot)
-				} else if isInList(txt, []string{"старт", "начать", "/старт", "/start", "/start@wombatobot", "start"}) {
+				} else if isInList(txt, []string{"/старт", "/start@wombatobot"}) {
 					replyToMsg(messID, "В групповые чаты писать вомботу НЕ НАДО, он сделан для лс! Пишите в лс: @wombatobot", peer, bot)
 				} else if strings.HasPrefix(strings.ToLower(txt), "о титуле") {
 					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о титуле"))
@@ -875,8 +891,13 @@ func main() {
 						rlog.Println("Error: ", err)
 						return
 					}
-
-					sendMsg(fmt.Sprintf(
+					newimg, err := getImgs(imgsC, "new")
+					if err != nil {
+						replyToMsg(messID, errStart+"new_womb: get_imgs", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					sendPhoto(randImg(newimg), fmt.Sprintf(
 						"Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты",
 						newWomb.Name),
 						peer, bot,
@@ -1850,12 +1871,26 @@ func main() {
 						rlog.Println("Error: ", err)
 						return
 					}
+					can0, err := getImgs(imgsC, "cancel_0")
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: cancel: get_imgs_0", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					can1, err := getImgs(imgsC, "cancel_1")
+					if err != nil {
+						replyToMsg(messID, errStart+"attack: cancel: get_imgs_1", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
 					if at.From == int64(from) {
-						sendMsg("Вы отменили атаку", peer, bot)
-						sendMsg(fmt.Sprintf("Вомбат %s решил вернуть вомбата добой. Вы свободны от атак", womb.Name), at.To, bot)
+						sendPhoto(randImg(can0), "Вы отменили атаку", peer, bot)
+						sendPhoto(randImg(can1),
+							fmt.Sprintf("Вомбат %s решил вернуть вомбата домой. Вы свободны от атак",
+								womb.Name), at.To, bot)
 					} else {
-						sendMsg("Вы отклонили атаку", peer, bot)
-						sendMsg(fmt.Sprintf(
+						sendPhoto(randImg(can0), "Вы отклонили атаку", peer, bot)
+						sendPhoto(randImg(can1), fmt.Sprintf(
 							"Вомбат %s вежливо отказал вам в войне. Вам пришлось забрать вомбата обратно. Вы свободны от атак",
 							womb.Name), at.From, bot)
 					}
