@@ -58,6 +58,12 @@ type Imgs struct {
 	Images []string `bson:"imgs"`
 }
 
+// Banked реализет вомбанковскую ячейку
+type Banked struct {
+	ID    int64  `bson:"_id"`
+	Money uint64 `bson:"money"`
+}
+
 var ctx = context.TODO()
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
@@ -165,7 +171,7 @@ func toDoc(v interface{}) (doc *bson.M, err error) {
 }
 
 // docUpd _
-func docUpd(v User, filter bson.M, col *mongo.Collection) error {
+func docUpd(v interface{}, filter bson.M, col *mongo.Collection) error {
 	doc, err := toDoc(v)
 	if err != nil {
 		return err
@@ -360,10 +366,16 @@ func randImg(imgs Imgs) string {
 	return imgs.Images[rand.Intn(len(imgs.Images))]
 }
 
+func getBanked(bank *mongo.Collection, ID int64) (b Banked, err error) {
+
+	return b, err
+}
+
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов",
 	"Вомбабушка", "womboba"}
 
 func main() {
+	// init
 	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
 	checkerr(err)
 	err = mongoClient.Connect(ctx)
@@ -375,6 +387,8 @@ func main() {
 	users := db.Collection("users")
 
 	attacks := db.Collection("attacks")
+
+	bank := db.Collection("bank")
 
 	var titles []Title
 
@@ -409,6 +423,7 @@ func main() {
 			continue
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
+			// MESSAGE_ADMIN_CHAT
 			go func(update tg.Update, bot *tg.BotAPI) {
 				if update.Message.ReplyToMessage == nil || update.Message.ReplyToMessage.From.ID != bot.Self.ID {
 					return
@@ -441,13 +456,14 @@ func main() {
 			continue
 		}
 		if update.Message.Chat.ID != int64(update.Message.From.ID) {
-			go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI, users *mongo.Collection,
-				attacks *mongo.Collection, imgsC *mongo.Collection) {
+			// MESSAGE_GROUP_CHAT
+			go func(update tg.Update, titles []Title, bot *tg.BotAPI, users, titlesC,
+				attacks, imgsC, bank *mongo.Collection) {
 
 				const errStart string = "Ошибка... Ответьте командой /admin на это сообщение\ngr: "
 
 				peer, from := update.Message.Chat.ID, update.Message.From.ID
-				txt, messID := update.Message.Text, update.Message.MessageID
+				txt, messID := strings.TrimSpace(update.Message.Text), update.Message.MessageID
 				users = db.Collection("users")
 
 				womb := User{}
@@ -561,7 +577,7 @@ func main() {
 						return
 					}
 					replyWithPhotoMD(messID, randImg(abimg), fmt.Sprintf(
-						"Вомбат [%s](%s) (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+						"Вомбат [%s](%s) (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей при себе",
 						tWomb.Name, link, ID, sl, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money),
 						peer, bot,
 					)
@@ -813,7 +829,7 @@ func main() {
 					for num, w := range rating {
 						switch name {
 						case "money":
-							msg += fmt.Sprintf("%d | %s (ID: %d) | %d шишей\n", num+1, w.Name, w.ID, w.Money)
+							msg += fmt.Sprintf("%d | %s (ID: %d) | %d шишей при себе\n", num+1, w.Name, w.ID, w.Money)
 						case "xp":
 							msg += fmt.Sprintf("%d | %s (ID: %d) | %d XP\n", num+1, w.Name, w.ID, w.XP)
 						case "health":
@@ -825,14 +841,15 @@ func main() {
 					msg = strings.TrimSuffix(msg, "\n")
 					replyToMsg(messID, msg, peer, bot)
 				}
-			}(update, titles, titlesC, bot, users, attacks, imgsC)
+			}(update, titles, bot, users, titlesC, attacks, imgsC, bank)
 			continue
 		}
-		go func(update tg.Update, titles []Title, titlesC *mongo.Collection, bot *tg.BotAPI, users *mongo.Collection,
-			attacks *mongo.Collection, imgsC *mongo.Collection) {
+		// MESSAGE_DIRECT_CHAT
+		go func(update tg.Update, titles []Title, bot *tg.BotAPI, users, titlesC,
+			attacks, imgsC, bank *mongo.Collection) {
 
 			peer, from := update.Message.Chat.ID, update.Message.From.ID
-			txt, messID := update.Message.Text, update.Message.MessageID
+			txt, messID := strings.TrimSpace(update.Message.Text), update.Message.MessageID
 
 			const errStart string = "Ошибка... Ответьте командой /admin на это сообщение\n"
 
@@ -916,7 +933,7 @@ func main() {
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей на счету: %d", womb.Money), peer, bot)
+							sendMsg(fmt.Sprintf("Операция проведена успешно! Шишей при себе: %d", womb.Money), peer, bot)
 						} else {
 							sendMsg("Ошибка: неправильный синтаксис. Синтаксис команды: `devtools set money {кол-во шишей}`", peer, bot)
 						}
@@ -1032,7 +1049,7 @@ func main() {
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей", womb.Health, womb.Money), peer, bot)
+							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей при себе", womb.Health, womb.Money), peer, bot)
 						} else {
 							sendMsg(
 								"Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
@@ -1057,7 +1074,7 @@ func main() {
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей", womb.Force, womb.Money), peer, bot)
+							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей при себе", womb.Force, womb.Money), peer, bot)
 						} else {
 							sendMsg(
 								"Ошибка: вы достигли максимального количества мощи (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
@@ -1072,6 +1089,17 @@ func main() {
 				}
 			} else if isInList(txt, []string{"поиск денег"}) {
 				if isInUsers {
+					if womb.Money < 5 {
+						womb.Money = 5
+						err := docUpd(womb, wFil, users)
+						if err != nil {
+							replyToMsg(messID, errStart+"find_money: free", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						replyToMsg(messID, "Так как у вас было меньше 5 шишей при себе, у вас их теперь 5!", peer, bot)
+						return
+					}
 					if womb.Money >= 1 {
 						womb.Money--
 						rand.Seed(time.Now().UnixNano())
@@ -1082,12 +1110,12 @@ func main() {
 							if addXP := rand.Intn(512 - 1); addXP < 5 {
 								womb.XP += uint32(addXP)
 								sendMsg(fmt.Sprintf(
-									"Поздравляем! Вы нашли на дороге %d шишей, а ещё вам дали %d XP! Теперь у вас %d шишей и %d XP",
+									"Поздравляем! Вы нашли на дороге %d шишей, а ещё вам дали %d XP! Теперь у вас %d шишей при себе и %d XP",
 									win, addXP, womb.Money, womb.XP),
 									peer, bot,
 								)
 							} else {
-								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас %d", win, womb.Money),
+								sendMsg(fmt.Sprintf("Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас при себе %d", win, womb.Money),
 									peer, bot,
 								)
 							}
@@ -1274,7 +1302,7 @@ func main() {
 							strTitles = "нет"
 						}
 						sendMsg(fmt.Sprintf(
-							"Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+							"Вомбат  %s (ID: %d; Алиас: %s)\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей при себе",
 							tWomb.Name, ID, alias, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
 						)
 					} else {
@@ -1371,7 +1399,7 @@ func main() {
 					rlog.Println("Error: ", err)
 					return
 				}
-				sendPhotoMD(randImg(abimg), fmt.Sprintf("Вомбат %s (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей",
+				sendPhotoMD(randImg(abimg), fmt.Sprintf("Вомбат %s (ID: %d) {%s}\nТитулы: %s\n 🕳 %d XP \n ❤ %d здоровья \n ⚡ %d мощи \n 💰 %d шишей при себе",
 					tWomb.Name, ID, sl, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), peer, bot,
 				)
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
@@ -1436,10 +1464,10 @@ func main() {
 										rlog.Println("Error: ", err)
 										return
 									}
-									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей",
+									sendMsg(fmt.Sprintf("Вы успешно перевели %d шишей на счёт %s. Теперь у вас %d шишей при себе",
 										amount, tWomb.Name, womb.Money), peer, bot,
 									)
-									sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей",
+									sendMsg(fmt.Sprintf("Пользователь %s (ID: %d) перевёл вам %d шишей. Теперь у вас %d шишей при себе",
 										womb.Name, peer, amount, tWomb.Money), ID, bot,
 									)
 								} else {
@@ -1449,7 +1477,7 @@ func main() {
 								sendMsg("Ошибка: количество переводимых шишей должно быть больше нуля", peer, bot)
 							}
 						} else {
-							sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей (%d)",
+							sendMsg(fmt.Sprintf("Ошибка: размер перевода (%d) должен быть меньше кол-ва ваших шишей при себе (%d)",
 								amount, womb.Money), peer, bot,
 							)
 						}
@@ -1999,7 +2027,7 @@ func main() {
 							tWomb.Health = 5
 							tWomb.Money = 50
 							editMsg(war2, fmt.Sprintf(
-								"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей :(",
+								"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей при себе :(",
 								womb.Name), tWomb.ID, bot)
 							break
 						} else if int(h1)-int(f2) <= 5 {
@@ -2023,7 +2051,7 @@ func main() {
 							womb.Health = 5
 							womb.Money = 50
 							editMsg(war1, fmt.Sprintf(
-								"Победил вомбат %s!!!\nВаше здоровье сбросилось до 5, а ещё у вас теперь только 50 шишей :(",
+								"Победил вомбат %s!!!\nВаше здоровье сбросилось до 5, а ещё у вас теперь только 50 шишей при себе :(",
 								tWomb.Name), peer, bot)
 							break
 						} else if round == 3 {
@@ -2041,7 +2069,7 @@ func main() {
 								womb.Health = uint32(h1)
 								womb.Money = 50
 								editMsg(war1, fmt.Sprintf(
-									"И победил вомбат %s на раунде %d!\n К сожалению, теперь у вас только %d здоровья и 50 шишей :(",
+									"И победил вомбат %s на раунде %d!\n К сожалению, теперь у вас только %d здоровья и 50 шишей при себе :(",
 									tWomb.Name, round, womb.Health), peer, bot)
 							} else {
 								h1c := int(womb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
@@ -2057,7 +2085,7 @@ func main() {
 								tWomb.Health = 5
 								tWomb.Money = 50
 								editMsg(war2, fmt.Sprintf(
-									"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей :(",
+									"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей при себе :(",
 									womb.Name), tWomb.ID, bot)
 							}
 						}
@@ -2139,7 +2167,7 @@ func main() {
 						} else {
 							break
 						}
-						msg = fmt.Sprintf("Ужас!!! Вас обокрали!!! У вас теперь только %d шишей!", womb.Money)
+						msg = fmt.Sprintf("Ужас!!! Вас обокрали!!! У вас теперь только %d шишей при себе!", womb.Money)
 					case 5:
 						if womb.Health <= 5 {
 							break
@@ -2249,7 +2277,7 @@ func main() {
 				for num, w := range rating {
 					switch name {
 					case "money":
-						msg += fmt.Sprintf("%d | %s (ID: %d) | %d шишей\n", num+1, w.Name, w.ID, w.Money)
+						msg += fmt.Sprintf("%d | %s (ID: %d) | %d шишей при себе\n", num+1, w.Name, w.ID, w.Money)
 					case "xp":
 						msg += fmt.Sprintf("%d | %s (ID: %d) | %d XP\n", num+1, w.Name, w.ID, w.XP)
 					case "health":
@@ -2263,7 +2291,259 @@ func main() {
 			} else if strings.HasPrefix(txt, "sendimg") {
 				id := strings.TrimSpace(strings.TrimPrefix(txt, "sendimg"))
 				sendPhoto(id, "", peer, bot)
+			} else if strings.HasPrefix(strings.ToLower(txt), "вомбанк") {
+				args := strings.Fields(strings.ToLower(txt))
+				if len(args) == 0 {
+					replyToMsg(messID, "как", peer, bot)
+					return
+				} else if args[0] != "вомбанк" {
+					return
+				}
+				rCount, err := bank.CountDocuments(ctx, wFil)
+				if err != nil {
+					replyToMsg(messID, errStart+"bank: isBanked_count", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				isBanked := rCount == 1
+				if len(args) == 0 {
+					return
+				} else if len(args) == 1 {
+					replyToMsg(messID, "вомбанк", peer, bot)
+				}
+				switch args[1] {
+				case "начать":
+					if len(args) != 2 {
+						replyToMsg(messID, "Вомбанк начать: слишком много аргументов", peer, bot)
+						return
+					} else if isBanked {
+						replyToMsg(messID, "Ты уже зарегестрирован в вомбанке...", peer, bot)
+						return
+					} else if !isInUsers {
+						replyToMsg(messID, "Вомбанк вомбатам! У тебя нет вомбата", peer, bot)
+						return
+					}
+					b := Banked{
+						ID:    from,
+						Money: 15,
+					}
+					_, err = bank.InsertOne(ctx, b)
+					if err != nil {
+						replyToMsg(messID, errStart+"bank: new: insert", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					replyToMsg(messID, "Вы были зарегестрированы в вомбанке! Вам на вомбосчёт добавили бесплатные 15 шишей",
+						peer, bot)
+				case "статус":
+					var (
+						fil   bson.M
+						tWomb User
+					)
+					switch len(args) {
+					case 2:
+						if !isInUsers {
+							replyToMsg(messID, "Вомбанк вомбатам! У тебя нет вомбата", peer, bot)
+							return
+						} else if !isBanked {
+							replyToMsg(messID, "Вы не можете посмотреть вомбосчёт, которого нет", peer, bot)
+							return
+						}
+						fil = wFil
+						tWomb = womb
+					case 3:
+						if id, err := strconv.Atoi(args[2]); err == nil {
+							fil = bson.M{"_id": id}
+							rCount, err := users.CountDocuments(ctx, fil)
+							if err != nil {
+								replyToMsg(messID, errStart+"bank: status: count_user", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							if rCount != 1 {
+								replyToMsg(messID, fmt.Sprintf("Вомбанк статус: пользователя с ID %d не найдено", id), peer, bot)
+								return
+							}
+							bCount, err := bank.CountDocuments(ctx, fil)
+							if err != nil {
+								replyToMsg(messID, errStart+"bank: status: count_banked", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							if bCount != 1 {
+								replyToMsg(messID, fmt.Sprintf("Вомбанк статус: у пользователя с ID %d нет вомбосчёта", id), peer, bot)
+								return
+							}
+							err = users.FindOne(ctx, fil).Decode(&tWomb)
+							if err != nil {
+								replyToMsg(messID, errStart+"bank: status: find_womb", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+						} else if id, ok := womb.Subs[args[2]]; ok {
+							fil = bson.M{"_id": id}
+							rCount, err := users.CountDocuments(ctx, fil)
+							if err != nil {
+								replyToMsg(messID, errStart+"bank: status: count_user", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							if rCount != 1 {
+								replyToMsg(messID, fmt.Sprintf("Вомбанк статус: пользователя с ID %d не найдено", id), peer, bot)
+								return
+							}
+							bCount, err := bank.CountDocuments(ctx, fil)
+							if err != nil {
+								replyToMsg(messID, errStart+"bank: status: count_banked", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+							if bCount != 1 {
+								replyToMsg(messID, fmt.Sprintf("Вомбанк статус: у пользователя %s нет вомбосчёта", args[2]), peer, bot)
+								return
+							}
+							err = users.FindOne(ctx, fil).Decode(&tWomb)
+							if err != nil {
+								replyToMsg(messID, errStart+"bank: status: find_womb", peer, bot)
+								rlog.Println("Error: ", err)
+								return
+							}
+						} else {
+							if len([]rune(args[2])) > 64 {
+								replyToMsg(messID, "Слишком длинный алиас...", peer, bot)
+								return
+							}
+							replyToMsg(messID, fmt.Sprintf("Вомбанк статус: подписчика с алиасом `%s` не найдено", args[2]), peer, bot)
+							return
+						}
+					default:
+						replyToMsg(messID, "Вомбанк статус: слишком много аргументов", peer, bot)
+					}
+					var b Banked
+					err = bank.FindOne(ctx, fil).Decode(&b)
+					if err != nil {
+						replyToMsg(messID, errStart+"bank: status: find", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					replyToMsg(messID, fmt.Sprintf(
+						"Вомбанк вомбата %s (ID: %d):\nНа счету: %d\nПри себе: %d",
+						tWomb.Name, tWomb.ID, b.Money, tWomb.Money), peer, bot)
+				case "положить":
+					if !isInUsers {
+						replyToMsg(messID, "У тебя нет вомбата...", peer, bot)
+						return
+					} else if len(args) != 3 {
+						replyToMsg(messID, "Вомбанк положить: недостаточно аргументов", peer, bot)
+						return
+					}
+					if num, err := strconv.ParseUint(args[2], 10, 64); err == nil {
+						if womb.Money < num+1 {
+							replyToMsg(messID, "Вомбанк положить: недостаточно шишей при себе для операции", peer, bot)
+							return
+						} else if !isBanked {
+							replyToMsg(messID,
+								"Вомбанк положить: у вас нет ячейки в банке! Заведите её через `вомбанк начать`", peer, bot)
+							return
+						} else if num == 0 {
+							replyToMsg(messID, "Ну и зачем?)", peer, bot)
+							return
+						}
+						var b Banked
+						err = bank.FindOne(ctx, wFil).Decode(&b)
+						if err != nil {
+							replyToMsg(messID, errStart+"bank: put: find_banked", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						womb.Money -= num
+						b.Money += num
+						err = docUpd(womb, wFil, users)
+						if err != nil {
+							replyToMsg(messID, errStart+"bank: put: upd_womb", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						err = docUpd(b, wFil, bank)
+						if err != nil {
+							replyToMsg(messID, errStart+"bank: put: upd_bank", peer, bot)
+							rlog.Println("Error: ", err)
+							return
+						}
+						replyToMsg(messID, fmt.Sprintf(
+							"Ваш вомбосчёт пополнен на %d ш! Вомбосчёт: %d ш; При себе: %d ш",
+							num, b.Money, womb.Money,
+						), peer, bot)
+					} else {
+						replyToMsg(messID, "Вомбанк положить: требуется целое неотрицательное число шишей до 2^64", peer, bot)
+					}
+				case "снять":
+					if !isInUsers {
+						replyToMsg(messID, "У тебя нет вомбата...", peer, bot)
+						return
+					} else if len(args) != 3 {
+						replyToMsg(messID, "Вомбанк снять: недостаточно аргументов", peer, bot)
+						return
+					}
+					var b Banked
+					err = bank.FindOne(ctx, wFil).Decode(&b)
+					if err != nil {
+						replyToMsg(messID, errStart+"bank: take: find_banked", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					var num uint64
+					var err error
+					if num, err = strconv.ParseUint(args[2], 10, 64); err == nil {
+						if num == 0 {
+							replyToMsg(messID, "Ну и зачем?", peer, bot)
+							return
+						}
+					} else if args[2] == "всё" || args[2] == "все" {
+						if b.Money == 0 {
+							replyToMsg(messID, "У вас на счету 0 шишей. Зачем?", peer, bot)
+							return
+						}
+						num = b.Money
+					} else {
+						replyToMsg(messID, "Вомбанк снять: требуется целое неотрицательное число шишей до 2^64", peer, bot)
+						return
+					}
+					if b.Money < num {
+						replyToMsg(messID, "Вомбанк снять: недостаточно шишей на вомбосчету для операции", peer, bot)
+						return
+					} else if !isBanked {
+						replyToMsg(messID,
+							"Вомбанк снять: у вас нет ячейки в банке! Заведите её через `вомбанк начать`", peer, bot)
+						return
+					}
+					b.Money -= num
+					womb.Money += num
+					err = docUpd(b, wFil, bank)
+					if err != nil {
+						replyToMsg(messID, errStart+"bank: put: upd_bank", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					err = docUpd(womb, wFil, users)
+					if err != nil {
+						replyToMsg(messID, errStart+"bank: put: upd_womb", peer, bot)
+						rlog.Println("Error: ", err)
+						return
+					}
+					replyToMsg(messID, fmt.Sprintf(
+						"Вы сняли %d ш! Вомбосчёт: %d ш; При себе: %d ш",
+						num, b.Money, womb.Money,
+					), peer, bot)
+				case "перевести":
+					if len(args) != 5 {
+						replyToMsg(messID, "Вомбанк перевести: слишком мало или много аргументов", peer, bot)
+						return
+					}
+				default:
+					replyToMsg(messID, "Вомбанк: неизвестная команда: "+args[1], peer, bot)
+				}
 			}
-		}(update, titles, titlesC, bot, users, attacks, imgsC)
+		}(update, titles, bot, users, titlesC, attacks, imgsC, bank)
 	}
 }
