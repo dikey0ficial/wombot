@@ -366,11 +366,6 @@ func randImg(imgs Imgs) string {
 	return imgs.Images[rand.Intn(len(imgs.Images))]
 }
 
-func getBanked(bank *mongo.Collection, ID int64) (b Banked, err error) {
-
-	return b, err
-}
-
 var standartNicknames []string = []string{"Вомбатыч", "Вомбатус", "wombatkiller2007", "wombatik", "батвом", "Табмов",
 	"Вомбабушка", "womboba"}
 
@@ -1037,55 +1032,94 @@ func main() {
 				}
 			} else if isInList(txt, []string{"помощь", "хелп", "help", "команды", "/help", "/help@wombatobot"}) {
 				sendMsg("https://telegra.ph/Pomoshch-10-28", peer, bot)
-			} else if isInList(txt, []string{"купить здоровье", "прокачка здоровья", "прокачать здоровье"}) {
+			} else if isPrefixInList(txt, []string{"купить здоровье", "прокачка здоровья", "прокачать здоровье"}) {
+				args := strings.Fields(txt)
+				if len(args) > 3 {
+					replyToMsg(messID, "Ошибка: слишком много аргументов...", peer, bot)
+					return
+				}
 				if isInUsers {
-					if womb.Money >= 5 {
-						if uint64(womb.Health+1) < uint64(math.Pow(2, 32)) {
-							womb.Money -= 5
-							womb.Health++
+					var amount uint32 = 1
+					if len(args) == 3 {
+						if val, err := strconv.ParseUint(args[2], 10, 32); err == nil {
+							if val == 0 {
+								replyToMsg(messID, "Поздравляю! Теперь у вас одна шиза и ещё одна шиза", peer, bot)
+								return
+							}
+							amount = uint32(val)
+						} else {
+							replyToMsg(messID, "Ошибка: число должно быть неотрицательным, целым и меньше 2^32", peer, bot)
+							return
+						}
+					}
+					if womb.Money >= uint64(amount*5) {
+						if uint64(womb.Health+amount) < uint64(math.Pow(2, 32)) {
+							womb.Money -= uint64(amount * 5)
+							womb.Health += amount
 							err := docUpd(womb, wFil, users)
 							if err != nil {
 								replyToMsg(messID, errStart+"buy_health: update", peer, bot)
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей при себе", womb.Health, womb.Money), peer, bot)
+							replyToMsg(messID,
+								fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей при себе", womb.Health, womb.Money),
+								peer, bot)
 						} else {
-							sendMsg(
+							replyToMsg(messID,
 								"Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
 								peer, bot,
 							)
 						}
 					} else {
-						sendMsg("Надо накопить побольше шишей! 1 здоровье = 5 шишей", peer, bot)
+						replyToMsg(messID, "Надо накопить побольше шишей! 1 здоровье = 5 шишей", peer, bot)
 					}
 				} else {
-					sendMsg("У тя ваще вобата нет...", peer, bot)
+					replyToMsg(messID, "У тя ваще вобата нет...", peer, bot)
 				}
-			} else if isInList(txt, []string{"купить мощь", "прокачка мощи", "прокачка силы", "прокачать мощь", "прокачать силу"}) {
+			} else if isPrefixInList(txt, []string{"купить мощь", "прокачка мощи", "прокачка силы", "прокачать мощь", "прокачать силу"}) {
+				args := strings.Fields(txt)
+				if len(args) > 3 {
+					replyToMsg(messID, "Ошибка: слишком много аргументов...", peer, bot)
+					return
+				}
 				if isInUsers {
-					if womb.Money >= 3 {
+					var amount uint32 = 1
+					if len(args) == 3 {
+						if val, err := strconv.ParseUint(args[2], 10, 32); err == nil {
+							if val == 0 {
+								replyToMsg(messID, "Поздравляю! Теперь у вас одна шиза и ещё одна шиза", peer, bot)
+								return
+							}
+							amount = uint32(val)
+						} else {
+							replyToMsg(messID, "Ошибка: число должно быть неотрицательным, целым и меньше 2^32", peer, bot)
+							return
+						}
+					}
+					if womb.Money >= uint64(amount*3) {
 						if uint64(womb.Force+1) < uint64(math.Pow(2, 32)) {
-							womb.Money -= 3
-							womb.Force++
+							womb.Money -= uint64(amount * 3)
+							womb.Force += amount
 							err := docUpd(womb, wFil, users)
 							if err != nil {
 								replyToMsg(messID, errStart+"buy_force: update", peer, bot)
 								rlog.Println("Error: ", err)
 								return
 							}
-							sendMsg(fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей при себе", womb.Force, womb.Money), peer, bot)
+							replyToMsg(messID, fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей при себе", womb.Force, womb.Money),
+								peer, bot)
 						} else {
-							sendMsg(
+							replyToMsg(messID,
 								"Ошибка: вы достигли максимального количества мощи (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
 								peer, bot,
 							)
 						}
 					} else {
-						sendMsg("Надо накопить побольше шишей! 1 мощь = 3 шиша", peer, bot)
+						replyToMsg(messID, "Надо накопить побольше шишей! 1 мощь = 3 шиша", peer, bot)
 					}
 				} else {
-					sendMsg("У тя ваще вобата нет...", peer, bot)
+					replyToMsg(messID, "У тя ваще вобата нет...", peer, bot)
 				}
 			} else if isInList(txt, []string{"поиск денег"}) {
 				if isInUsers {
