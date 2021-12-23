@@ -135,7 +135,6 @@ func isInList(str string, list []string) bool {
 func hasTitle(i uint16, list []uint16) bool {
 	for _, elem := range list {
 		if i == elem {
-			rlog.Println(elem)
 			return true
 		}
 	}
