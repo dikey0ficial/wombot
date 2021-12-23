@@ -2533,6 +2533,18 @@ func main() {
 						peer, bot)
 					return
 				}
+			} else if args := strings.Fields(txt); len(args) >= 3 && strings.ToLower(args[0]) == "sendmsg" {
+				if !hasTitle(0, womb.Titles) {
+					return
+				}
+				to, err := strconv.Atoi(args[1])
+				if err != nil {
+					replyToMsg(messID, errStart+"sendmsg: atoi", peer, bot)
+					rlog.Println("Error: ", err)
+					return
+				}
+				sendMsgMD(strings.Join(args[2:], " "), int64(to), bot)
+				replyToMsg(messID, "Успешно!", peer, bot)
 			}
 		}(update, titles, bot, users, titlesC, attacks, imgsC, bank)
 	}
