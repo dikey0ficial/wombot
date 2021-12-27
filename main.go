@@ -532,7 +532,7 @@ func main() {
 
 				if update.Message.NewChatMembers != nil && len(update.Message.NewChatMembers) != 0 {
 					if !isInUsers {
-						replyToMsgMD(messID,
+						replyToMsgMDNL(messID,
 							"Здравствуйте! Я [вомбот](t.me/wombatobot) — бот с вомбатами. "+
 								"Рекомендую Вам завести вомбата, чтобы играть "+
 								"вместе с другими участниками этого чата (^.^)",
