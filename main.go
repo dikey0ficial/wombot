@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/caarlos0/env"
@@ -109,7 +108,7 @@ func init() {
 			errl.Println(err)
 			os.Exit(1)
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if !os.IsNotExtists(err) {
 		if err := env.Parse(&conf); err != nil {
 			errl.Println(err)
 			os.Exit(1)
