@@ -36,7 +36,7 @@ func (s *Server) selfPing(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			resp, err := http.Get("http://localhost:80/ping")
+			resp, err := http.Get("http://wombatobot.herokuapp.com:80/ping")
 			if err != nil {
 				errl.Println("SelfPing:", err)
 				continue
