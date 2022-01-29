@@ -108,7 +108,7 @@ func init() {
 			errl.Println(err)
 			os.Exit(1)
 		}
-	} else if !os.IsNotExtists(err) {
+	} else if !os.IsNotExist(err) {
 		if err := env.Parse(&conf); err != nil {
 			errl.Println(err)
 			os.Exit(1)
