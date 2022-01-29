@@ -2,29 +2,24 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
-	"math"
-	"math/rand"
-	"os"
-	// "sort"
+	"github.com/BurntSushi/toml"
+	"github.com/caarlos0/env"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	jsoniter "github.com/json-iterator/go"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"io/ioutil"
+	"log"
+	"math"
+	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
-
-// Config нужен для настроек
-type Config struct {
-	Token     string `json:"tg_token"`
-	MongoURL  string `json:"mongo_url"`
-	SupChatID int64  `json:"support_chat_id"`
-}
 
 // Title — описание титула
 type Title struct {
@@ -73,58 +68,77 @@ type Clan struct {
 	Members []int64 `bson:"members"`
 }
 
-var ctx = context.TODO()
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
-
-const (
-	logpath = "runtime.log"
-)
-
-func initLog() *log.Logger {
-	f, err := os.OpenFile(logpath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	nlog := log.New(f, "", log.Ldate|log.Ltime)
-	go func(f *os.File) {
-		// данный костыль нужен, чтобы файл
-		// не закрывался раньше времени,
-		// но при этом всё же
-		// инициализировать логгер
-		defer f.Close()
-		for {
-			time.Sleep(300 * time.Second)
-		}
-	}(f)
-	return nlog
+// Clattack реализует клановую атаку
+type Clattack struct {
+	ID   string `bson:"_id"`
+	From string `bson:"from"`
+	To   string `bson:"to"`
 }
 
-var rlog = initLog()
+// Clwar реализует клана-бойца
+type Clwar struct {
+	Tag    string
+	Name   string
+	Health uint32
+	Force  uint32
+}
+
+var (
+	ctx, cancel             = context.WithTimeout(context.Background(), time.Second*10)
+	infl, errl, debl, servl *log.Logger
+	conf                    = struct {
+		Token     string `toml:"tg_token" env:"TGTOKEN"`
+		MongoURL  string `toml:"mongo_url" env:"MONGOURL"`
+		SupChatID int64  `toml:"support_chat_id" env:"SUPCHATID"`
+		Debug     bool   `toml:"debug" env:"DEBUG"`
+	}{}
+)
+
+func init() {
+	infl = log.New(os.Stdout, "[INFO]\t", log.Ldate|log.Ltime)
+	errl = log.New(os.Stderr, "[ERROR]\t", log.Ldate|log.Ltime|log.Lshortfile)
+	debl = log.New(os.Stdout, "[DEBUG]\t", log.Ldate|log.Ltime|log.Lshortfile)
+	servl = log.New(os.Stdout, "[SERVER]\t", log.Ldate|log.Ltime)
+	if f, err := os.Open("config.toml"); err == nil {
+		dat, err := ioutil.ReadAll(f)
+		if err != nil {
+			errl.Println(err)
+			os.Exit(1)
+		}
+		if err := toml.Unmarshal(dat, &conf); err != nil {
+			errl.Println(err)
+			os.Exit(1)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		if err := env.Parse(&conf); err != nil {
+			errl.Println(err)
+			os.Exit(1)
+		}
+	} else {
+		errl.Println(err)
+		os.Exit(1)
+	}
+	if strings.ToLower(os.Getenv("HEROKU")) == "true" {
+		go func() {
+			s := NewServer()
+			for {
+				err := s.Run()
+				if err != nil {
+					errl.Println("Server error: ", err)
+				}
+			}
+		}()
+		infl.Println("Started server")
+	}
+}
 
 // checkerr реализует проверку ошибок без паники
 func checkerr(err error) {
 	if err != nil && err.Error() != "EOF" {
 		fmt.Printf("error! %v\n", err)
-		rlog.Printf("Error: %v\n", err)
+		infl.Printf("[ERROR] e: %v\n", err)
 	}
 }
-
-// loadConfig нужуен для загрузки конфига до инициализвации требующих его функций
-func loadConfig() Config {
-	file, err := os.Open("config.json")
-	if err != nil && err.Error() != "EOF" {
-		checkerr(err)
-		return Config{}
-	}
-	defer file.Close()
-	var result = Config{}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&result)
-	checkerr(err)
-	return result
-}
-
-var conf = loadConfig()
 
 // isInList нужен для проверки сообщений
 func isInList(str string, list []string) bool {
@@ -296,9 +310,27 @@ func replyWithPhoto(replyID int, id, caption string, chatID int64, bot *tg.BotAP
 	return mess.MessageID
 }
 
-// isInAttacks возвращает информацию, еслть ли существо в атаках и
+// isInAttacks возвращает информацию, есть ли существо в атаках и
 // отправитель ли он
 func isInAttacks(id int64, attacks *mongo.Collection) (isIn, isFrom bool) {
+	if f, err := attacks.CountDocuments(ctx, bson.M{"from": id}); f > 0 && err == nil {
+		isFrom = true
+	} else if err != nil {
+		checkerr(err)
+	}
+	var isTo bool
+	if t, err := attacks.CountDocuments(ctx, bson.M{"to": id}); t > 0 && err == nil {
+		isTo = true
+	} else if err != nil {
+		checkerr(err)
+	}
+	isIn = isFrom || isTo
+	return isIn, isFrom
+}
+
+// isInClttacks возвращает информацию, есть ли клан в клановых атаках и
+// отправитель ли он
+func isInClattacks(id string, attacks *mongo.Collection) (isIn, isFrom bool) {
 	if f, err := attacks.CountDocuments(ctx, bson.M{"from": id}); f > 0 && err == nil {
 		isFrom = true
 	} else if err != nil {
@@ -459,6 +491,7 @@ func main() {
 	bank := db.Collection("bank")
 
 	clans := db.Collection("clans")
+	clattacks := db.Collection("clattacks")
 
 	var titles []Title
 
@@ -483,13 +516,13 @@ func main() {
 	u.Timeout = 1
 	updates := bot.GetUpdatesChan(u)
 	checkerr(err)
-	log.Println("Start!")
+	infl.Println("Started bot")
 
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		} else if update.Message.Photo != nil {
-			rlog.Println("img ", (update.Message.Photo)[0].FileID)
+			infl.Println("img ", (update.Message.Photo)[0].FileID)
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
 			// MESSAGE_ADMIN_CHAT
@@ -540,7 +573,7 @@ func main() {
 				rCount, err := users.CountDocuments(ctx, wFil)
 				if err != nil {
 					replyToMsg(messID, errStart+"isInUsers: count_womb", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				isInUsers := rCount != 0
@@ -548,7 +581,7 @@ func main() {
 					err = users.FindOne(ctx, wFil).Decode(&womb)
 					if err != nil {
 						replyToMsg(messID, errStart+"womb: find_womb", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 				}
@@ -567,7 +600,8 @@ func main() {
 					return
 				}
 
-				rlog.Printf("MESSGAE_GROUP p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name,
+				infl.Printf("[GROUP_MESSGAE] i:%d p:%d f:%d un:%s, wn:%s, t:%s\n", messID, peer, from,
+					update.Message.From.UserName, womb.Name,
 					strings.Join(strings.Fields(txt), " "))
 				if strings.HasPrefix(strings.ToLower(txt), "о вомбате") {
 					strID := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(txt), "о вомбате"))
@@ -592,12 +626,12 @@ func main() {
 						err := users.FindOne(ctx, bson.M{"name": caseInsensitive(strID)}).Decode(&tWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"about_womb: find_users_name", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					} else if err != nil {
 						replyToMsg(messID, errStart+"about_womb: count_users_name", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else {
 						replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с именем %s не найдено", strID), peer, bot)
@@ -610,7 +644,7 @@ func main() {
 							rCount, err = titlesC.CountDocuments(ctx, bson.M{"_id": id})
 							if err != nil {
 								replyToMsg(messID, errStart+"about_womb: count_titles", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							if rCount == 0 {
@@ -621,7 +655,7 @@ func main() {
 							err = titlesC.FindOne(ctx, bson.M{"_id": id}).Decode(&elem)
 							if err != nil {
 								replyToMsg(messID, errStart+"about_womb: title: find_title", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
@@ -639,7 +673,7 @@ func main() {
 					abimg, err := getImgs(imgsC, "about")
 					if err != nil {
 						replyToMsg(messID, errStart+"about_womb: get_imgs", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyWithPhotoMD(messID, randImg(abimg), fmt.Sprintf(
@@ -651,7 +685,7 @@ func main() {
 					hru, err := getImgs(imgsC, "schweine")
 					if err != nil {
 						replyToMsg(messID, errStart+"schweine: get_imgs", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					mID := replyWithPhoto(messID, randImg(hru), "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
@@ -670,7 +704,7 @@ func main() {
 						rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": ID})
 						if err != nil {
 							replyToMsg(messID, errStart+"about_title: count_titles", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						if rCount != 0 {
@@ -760,13 +794,13 @@ func main() {
 								err = users.FindOne(ctx, bson.M{"name": caseInsensitive(strID)}).Decode(&tWomb)
 								if err != nil {
 									replyToMsg(messID, errStart+"attack: find_users_name", peer, bot)
-									rlog.Println("Error: ", err)
+									infl.Println("[ERROR] e: ", err)
 									return
 								}
 								ID = tWomb.ID
 							} else if err != nil {
 								replyToMsg(messID, errStart+"attack: status: count_users_name", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							} else {
 								replyToMsg(messID, fmt.Sprintf("Пользователя с никнеймом `%s` не найдено", strID), peer, bot)
@@ -778,7 +812,7 @@ func main() {
 							a, err := getAttackByWomb(ID, true, attacks)
 							if err != nil {
 								replyToMsg(messID, errStart+"attack: status: to_at", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							at = a
@@ -786,7 +820,7 @@ func main() {
 							a, err := getAttackByWomb(from, false, attacks)
 							if err != nil {
 								replyToMsg(messID, errStart+"attack: status: from_at", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							at = a
@@ -798,13 +832,13 @@ func main() {
 						err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&fromWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: status: find_fromWomb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&toWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: status: find_twomb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsg(messID, fmt.Sprintf(
@@ -858,7 +892,7 @@ func main() {
 					cur, err := users.Find(ctx, bson.M{}, opts)
 					if err != nil {
 						replyToMsg(messID, errStart+"rating: find", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					var rating []User
@@ -879,7 +913,7 @@ func main() {
 						msg += "мощи "
 					default:
 						replyToMsg(messID, errStart+"rating: name else", peer, bot)
-						rlog.Println("ERROR err:rating: name else")
+						infl.Println("ERROR err:rating: name else")
 						return
 					}
 					msg += "в порядке "
@@ -889,7 +923,7 @@ func main() {
 						msg += "уменьшения:"
 					} else {
 						replyToMsg(messID, errStart+"rating: queue else", peer, bot)
-						rlog.Println("ERROR err:rating: queue else")
+						infl.Println("ERROR err:rating: queue else")
 						return
 					}
 					msg += "\n"
@@ -913,7 +947,7 @@ func main() {
 		}
 		// MESSAGE_DIRECT_CHAT
 		go func(update tg.Update, titles []Title, bot *tg.BotAPI, users, titlesC,
-			attacks, imgsC, bank, clans *mongo.Collection) {
+			attacks, imgsC, bank, clans, clattacks *mongo.Collection) {
 
 			peer, from := update.Message.Chat.ID, update.Message.From.ID
 			txt, messID := strings.TrimSpace(update.Message.Text), update.Message.MessageID
@@ -927,7 +961,7 @@ func main() {
 			rCount, err := users.CountDocuments(ctx, wFil)
 			if err != nil {
 				replyToMsg(messID, errStart+"isInUsers: count_womb", peer, bot)
-				rlog.Println("Error: ", err)
+				infl.Println("[ERROR] e: ", err)
 				return
 			}
 			isInUsers := rCount != 0
@@ -935,12 +969,13 @@ func main() {
 				err = users.FindOne(ctx, wFil).Decode(&womb)
 				if err != nil {
 					replyToMsg(messID, errStart+"womb: find_womb", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 			}
 
-			rlog.Printf("MESSAGE p:%d f:%d un:%s, wn:%s, t:%s\n", peer, from, update.Message.From.UserName, womb.Name,
+			infl.Printf("[DIRECT_MESSAGE] i:%d, p:%d f:%d un:%s wn:%s t:%s\n", messID, peer, from,
+				update.Message.From.UserName, womb.Name,
 				strings.Join(strings.Fields(txt), " "))
 
 			if strings.HasPrefix(txt, "/start") {
@@ -955,8 +990,7 @@ func main() {
 					)
 				} else {
 					rand.Seed(peer)
-					newWomb := User{
-						ID:     peer,
+					newWomb := User{ID: peer,
 						Name:   "Вомбат_" + strconv.Itoa(int(from)),
 						XP:     0,
 						Health: 5,
@@ -968,13 +1002,13 @@ func main() {
 					_, err = users.InsertOne(ctx, &newWomb)
 					if err != nil {
 						replyToMsg(messID, errStart+"new_womb: insert", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					newimg, err := getImgs(imgsC, "new")
 					if err != nil {
 						replyToMsg(messID, errStart+"new_womb: get_imgs", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyWithPhoto(messID,
@@ -994,7 +1028,7 @@ func main() {
 							err = docUpd(womb, wFil, users)
 							if err != nil {
 								replyToMsg(messID, errStart+"devtools: set_money: upd", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							replyToMsg(messID, fmt.Sprintf("Операция проведена успешно! Шишей при себе: %d", womb.Money), peer, bot)
@@ -1025,7 +1059,7 @@ func main() {
 						err := docUpd(womb, wFil, users)
 						if err != nil {
 							replyToMsg(messID, errStart+"devtools: reset: update", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsg(messID, "Операция произведена успешно!", peer, bot)
@@ -1037,7 +1071,7 @@ func main() {
 					err := docUpd(womb, wFil, users)
 					if err != nil {
 						replyToMsg(messID, errStart+"devtools: on", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, "Выдан титул \"Вомботестер\" (ID: 0)", peer, bot)
@@ -1048,13 +1082,13 @@ func main() {
 						_, err = users.DeleteOne(ctx, wFil)
 						if err != nil {
 							replyToMsg(messID, errStart+"kill: delete", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						kill, err := getImgs(imgsC, "kill")
 						if err != nil {
 							replyToMsg(messID, errStart+"kill: get_imgs", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyWithPhoto(messID,
@@ -1101,7 +1135,7 @@ func main() {
 				rCount, err := users.CountDocuments(ctx, bson.M{"name": caseInsensitive(name)})
 				if err != nil {
 					replyToMsg(messID, errStart+"rename: count", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				} else if rCount != 0 {
 					replyToMsg(messID, fmt.Sprintf("Никнейм `%s` уже занят(", name), peer, bot)
@@ -1114,7 +1148,7 @@ func main() {
 				err = docUpd(womb, wFil, users)
 				if err != nil {
 					replyToMsg(messID, errStart+"rename: update", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				replyToMsg(messID,
@@ -1164,7 +1198,7 @@ func main() {
 								err := docUpd(womb, wFil, users)
 								if err != nil {
 									replyToMsg(messID, errStart+"buy: health: update", peer, bot)
-									rlog.Println("Error: ", err)
+									infl.Println("[ERROR] e: ", err)
 									return
 								}
 								replyToMsg(messID,
@@ -1216,7 +1250,7 @@ func main() {
 								err := docUpd(womb, wFil, users)
 								if err != nil {
 									replyToMsg(messID, errStart+"buy: force: update", peer, bot)
-									rlog.Println("Error: ", err)
+									infl.Println("[ERROR] e: ", err)
 									return
 								}
 								replyToMsg(messID, fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей при себе", womb.Force, womb.Money),
@@ -1260,7 +1294,7 @@ func main() {
 					err = docUpd(womb, wFil, users)
 					if err != nil {
 						replyToMsg(messID, errStart+"buy: vadimushka: update", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, "Теперь вы вадшамообладатель", peer, bot)
@@ -1280,7 +1314,7 @@ func main() {
 						leps, err := getImgs(imgsC, "leps")
 						if err != nil {
 							replyToMsg(messID, errStart+"buy: nyamka: get_leps_imgs", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyWithPhoto(messID,
@@ -1293,7 +1327,7 @@ func main() {
 					qwess, err := getImgs(imgsC, "qwess")
 					if err != nil {
 						replyToMsg(messID, errStart+"buy: nyamka: get_qwess_imgs", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if !(hasTitle(2, womb.Titles)) {
@@ -1302,7 +1336,7 @@ func main() {
 						err = docUpd(womb, wFil, users)
 						if err != nil {
 							replyToMsg(messID, errStart+"buy: nyamka: update_first_time", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyWithPhoto(messID,
@@ -1315,12 +1349,12 @@ func main() {
 						err = docUpd(womb, wFil, users)
 						if err != nil {
 							replyToMsg(messID, errStart+"buy: nyamka: update", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						if err != nil {
 							replyToMsg(messID, errStart+"buy: nyamka: get_leps_imgs", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyWithPhoto(messID,
@@ -1339,7 +1373,7 @@ func main() {
 						err := docUpd(womb, wFil, users)
 						if err != nil {
 							replyToMsg(messID, errStart+"find_money: free", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsg(messID, "Так как у вас было меньше 5 шишей при себе, у вас их теперь 5!", peer, bot)
@@ -1370,7 +1404,7 @@ func main() {
 						err := docUpd(womb, wFil, users)
 						if err != nil {
 							replyToMsg(messID, errStart+"find_money: update", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					} else {
@@ -1388,7 +1422,7 @@ func main() {
 					rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": ID})
 					if err != nil {
 						replyToMsg(messID, errStart+"about_title: count_titles", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if rCount != 0 {
@@ -1424,12 +1458,12 @@ func main() {
 					err := users.FindOne(ctx, bson.M{"name": caseInsensitive(strID)}).Decode(&tWomb)
 					if err != nil {
 						replyToMsg(messID, errStart+"about_womb: find_users_name", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 				} else if err != nil {
 					replyToMsg(messID, errStart+"about_womb: count_users_name", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				} else {
 					replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с именем %s не найдено", strID), peer, bot)
@@ -1442,7 +1476,7 @@ func main() {
 						rCount, err = titlesC.CountDocuments(ctx, bson.M{"_id": id})
 						if err != nil {
 							replyToMsg(messID, errStart+"about_womb: count_titles", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						if rCount == 0 {
@@ -1453,7 +1487,7 @@ func main() {
 						err = titlesC.FindOne(ctx, bson.M{"_id": id}).Decode(&elem)
 						if err != nil {
 							replyToMsg(messID, errStart+"about_womb: title: find_title", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
@@ -1469,7 +1503,7 @@ func main() {
 				abimg, err := getImgs(imgsC, "about")
 				if err != nil {
 					replyToMsg(messID, errStart+"about_womb: get_imgs", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				replyWithPhotoMD(messID, randImg(abimg), fmt.Sprintf(
@@ -1509,13 +1543,13 @@ func main() {
 							err = users.FindOne(ctx, bson.M{"name": caseInsensitive(name)}).Decode(&tWomb)
 							if err != nil {
 								replyToMsg(messID, errStart+"send_shishs: status: find_users_name", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							ID = tWomb.ID
 						} else if err != nil {
 							replyToMsg(messID, errStart+"send_shishs: status: count_users_name", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						} else {
 							replyToMsg(messID, fmt.Sprintf("Ошибка: вомбата с именем %s не найдено", name), peer, bot)
@@ -1530,7 +1564,7 @@ func main() {
 								rCount, err = users.CountDocuments(ctx, bson.M{"_id": ID})
 								if err != nil {
 									replyToMsg(messID, errStart+"send_shishs: count_to", peer, bot)
-									rlog.Println("Error: ", err)
+									infl.Println("[ERROR] e: ", err)
 									return
 								}
 								if rCount != 0 {
@@ -1538,7 +1572,7 @@ func main() {
 									err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
 									if err != nil {
 										replyToMsg(messID, errStart+"send_shishs: find_to", peer, bot)
-										rlog.Println("Error: ", err)
+										infl.Println("[ERROR] e: ", err)
 										return
 									}
 									womb.Money -= amount
@@ -1546,13 +1580,13 @@ func main() {
 									err := docUpd(tWomb, bson.M{"_id": ID}, users)
 									if err != nil {
 										replyToMsg(messID, errStart+"send_shishs: update: from", peer, bot)
-										rlog.Println("Error: ", err)
+										infl.Println("[ERROR] e: ", err)
 										return
 									}
 									err = docUpd(womb, wFil, users)
 									if err != nil {
 										replyToMsg(messID, errStart+"send_shishs: update: to", peer, bot)
-										rlog.Println("Error: ", err)
+										infl.Println("[ERROR] e: ", err)
 										return
 									}
 									replyToMsg(messID,
@@ -1594,7 +1628,7 @@ func main() {
 				defer cur.Close(ctx)
 				if err != nil {
 					replyToMsg(messID, errStart+"update_data: titles", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				titles = []Title{}
@@ -1603,7 +1637,7 @@ func main() {
 					err := cur.Decode(&nextOne)
 					if err != nil {
 						replyToMsg(messID, errStart+"update_data: titles_decode", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					titles = append(titles, nextOne)
@@ -1611,7 +1645,7 @@ func main() {
 				cur.Close(ctx)
 				imgsC = db.Collection("imgs")
 				sendMsg("Успешно обновлено!", peer, bot)
-				rlog.Printf("DATA_UPDATE %d\n", peer)
+				infl.Printf("DATA_UPDATE %d\n", peer)
 				fmt.Printf("Data update by %d\n", peer)
 			} else if isPrefixInList(txt, []string{"/admin", "/админ", "/admin@wombatobot", "одмен!", "/баг", "/bug", "/bug@wombatobot", "/support", "/support@wombatobot"}) {
 				oArgs := strings.Fields(strings.ToLower(txt))
@@ -1683,14 +1717,14 @@ func main() {
 						at, err := getAttackByWomb(from, true, attacks)
 						if err != nil && err != errNoAttack {
 							replyToMsg(messID, errStart+"attack: to: from_from: get_attack_by_womb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						var aWomb User
 						err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&aWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: to: find_attack_from", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsgMD(messID, fmt.Sprintf(
@@ -1702,14 +1736,14 @@ func main() {
 						at, err := getAttackByWomb(from, false, attacks)
 						if err != nil && err != errNoAttack {
 							replyToMsg(messID, errStart+"attack: to: from_to: get_attack_by_womb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						var aWomb User
 						err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&aWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: to: find_attack_to", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsgMD(messID, fmt.Sprintf(
@@ -1729,13 +1763,13 @@ func main() {
 						err = users.FindOne(ctx, bson.M{"name": caseInsensitive(strID)}).Decode(&tWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: to: find_users_name", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						ID = tWomb.ID
 					} else if err != nil {
 						replyToMsg(messID, errStart+"attack: to: count_users_name", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else {
 						replyToMsg(messID, fmt.Sprintf("Пользователя с именем `%s` не найдено", strID),
@@ -1749,7 +1783,7 @@ func main() {
 					err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: to: is_to_sleep", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if tWomb.Sleep {
@@ -1761,14 +1795,14 @@ func main() {
 						at, err := getAttackByWomb(ID, true, attacks)
 						if err != nil && err != errNoAttack {
 							replyToMsg(messID, errStart+"attack: to: to_from: get_attack_by_womb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						var aWomb User
 						err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&aWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: to: find_to_from", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsgMD(messID, fmt.Sprintf(
@@ -1780,14 +1814,14 @@ func main() {
 						at, err := getAttackByWomb(from, false, attacks)
 						if err != nil && err != errNoAttack {
 							replyToMsg(messID, errStart+"attack: to: to_to: get_attack_by_womb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						var aWomb User
 						err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&aWomb)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: to: find_to_to", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsg(messID, fmt.Sprintf(
@@ -1804,7 +1838,7 @@ func main() {
 					_, err = attacks.InsertOne(ctx, newAt)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: to: insert", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, fmt.Sprintf(
@@ -1838,13 +1872,13 @@ func main() {
 							err = users.FindOne(ctx, bson.M{"name": caseInsensitive(strID)}).Decode(&tWomb)
 							if err != nil {
 								replyToMsg(messID, errStart+"attack: find_users_name", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							ID = tWomb.ID
 						} else if err != nil {
 							replyToMsg(messID, errStart+"attack: status: count_users_name", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						} else {
 							replyToMsg(messID, fmt.Sprintf("Пользователя с никнеймом `%s` не найдено", strID), peer, bot)
@@ -1856,7 +1890,7 @@ func main() {
 						a, err := getAttackByWomb(ID, true, attacks)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: status: to_at", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						at = a
@@ -1864,7 +1898,7 @@ func main() {
 						a, err := getAttackByWomb(from, false, attacks)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: status: from_at", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						at = a
@@ -1876,13 +1910,13 @@ func main() {
 					err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&fromWomb)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: status: find_fromWomb", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&toWomb)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: status: find_twomb", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, fmt.Sprintf(
@@ -1901,7 +1935,7 @@ func main() {
 						a, err := getAttackByWomb(from, true, attacks)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: cancel: to_at", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						at = a
@@ -1909,7 +1943,7 @@ func main() {
 						a, err := getAttackByWomb(from, false, attacks)
 						if err != nil {
 							replyToMsg(messID, errStart+"attack: cancel: from_at", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						at = a
@@ -1920,19 +1954,19 @@ func main() {
 					_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: cancel: delete", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					can0, err := getImgs(imgsC, "cancel_0")
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: cancel: get_imgs_0", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					can1, err := getImgs(imgsC, "cancel_1")
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: cancel: get_imgs_1", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if at.From == int64(from) {
@@ -1960,8 +1994,8 @@ func main() {
 					} else if is {
 						a, err := getAttackByWomb(from, false, attacks)
 						if err != nil {
-							replyToMsg(messID, errStart+"attack: cancel: from_at", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"attack: accept: from_at", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						at = a
@@ -1972,10 +2006,10 @@ func main() {
 					rCount, err = users.CountDocuments(ctx, bson.M{"_id": at.From})
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: accept: count_from", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount < 1 {
-						sendMsg("Ну ты чаво... Соперника не существует! Как вообще мы такое допустили?! (ответь на это командой /admin",
+						sendMsg("Ну ты чаво... Соперника не существует! Как вообще мы такое допустили?! (ответь на это командой /admin)",
 							peer, bot)
 						return
 					}
@@ -1983,13 +2017,13 @@ func main() {
 					err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&tWomb)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: accept: find_from", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					atimgs, err := getImgs(imgsC, "attacks")
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: accept: imgs", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					im := randImg(atimgs)
@@ -2117,19 +2151,19 @@ func main() {
 					err = docUpd(womb, wFil, users)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: accept: update_to", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
-					docUpd(tWomb, bson.M{"_id": tWomb.ID}, users)
+					err = docUpd(tWomb, bson.M{"_id": tWomb.ID}, users)
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: accept: update_from", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
 					if err != nil {
 						replyToMsg(messID, errStart+"attack: accept: delete", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 				default:
@@ -2147,13 +2181,13 @@ func main() {
 				err = docUpd(womb, wFil, users)
 				if err != nil {
 					replyToMsg(messID, errStart+"go_sleep: update", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				sleep, err := getImgs(imgsC, "sleep")
 				if err != nil {
 					replyToMsg(messID, errStart+"go_sleep: get_imgs", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				sendPhoto(randImg(sleep), "Вы легли спать. Спокойного сна!", peer, bot)
@@ -2215,13 +2249,13 @@ func main() {
 				err := docUpd(womb, wFil, users)
 				if err != nil {
 					replyToMsg(messID, errStart+"unsleep: update", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				unsleep, err := getImgs(imgsC, "unsleep")
 				if err != nil {
 					replyToMsg(messID, errStart+"unsleep: get_imgs", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				sendPhoto(randImg(unsleep), msg, peer, bot)
@@ -2267,7 +2301,7 @@ func main() {
 				cur, err := users.Find(ctx, bson.M{}, opts)
 				if err != nil {
 					replyToMsg(messID, errStart+"rating: find", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				var rating []User
@@ -2294,7 +2328,7 @@ func main() {
 					msg += "уменьшения"
 				} else {
 					replyToMsg(messID, errStart+"rating: queue else", peer, bot)
-					rlog.Println("ERROR err:rating: queue else")
+					infl.Println("ERROR err:rating: queue else")
 					return
 				}
 				msg += ":\n"
@@ -2326,7 +2360,7 @@ func main() {
 				rCount, err := bank.CountDocuments(ctx, wFil)
 				if err != nil {
 					replyToMsg(messID, errStart+"bank: isBanked_count", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				isBanked := rCount == 1
@@ -2354,7 +2388,7 @@ func main() {
 					_, err = bank.InsertOne(ctx, b)
 					if err != nil {
 						replyToMsg(messID, errStart+"bank: new: insert", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, "Вы были зарегестрированы в вомбанке! Вам на вомбосчёт добавили бесплатные 15 шишей",
@@ -2388,14 +2422,14 @@ func main() {
 							err = users.FindOne(ctx, bson.M{"name": caseInsensitive(name)}).Decode(&tWomb)
 							if err != nil {
 								replyToMsg(messID, errStart+"bank: status: find_users_name", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							fil = bson.M{"_id": tWomb.ID}
 							bCount, err := bank.CountDocuments(ctx, fil)
 							if err != nil {
 								replyToMsg(messID, errStart+"bank: status: count_banked", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							if bCount == 0 {
@@ -2407,7 +2441,7 @@ func main() {
 							}
 						} else if err != nil {
 							replyToMsg(messID, errStart+"bank: status: count_users_name", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						} else {
 							replyToMsg(messID, fmt.Sprintf("Ошибка: вомбата с именем %s не найдено", name), peer, bot)
@@ -2420,7 +2454,7 @@ func main() {
 					err = bank.FindOne(ctx, fil).Decode(&b)
 					if err != nil {
 						replyToMsg(messID, errStart+"bank: status: find", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, fmt.Sprintf(
@@ -2450,7 +2484,7 @@ func main() {
 						err = bank.FindOne(ctx, wFil).Decode(&b)
 						if err != nil {
 							replyToMsg(messID, errStart+"bank: put: find_banked", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						womb.Money -= num
@@ -2458,13 +2492,13 @@ func main() {
 						err = docUpd(womb, wFil, users)
 						if err != nil {
 							replyToMsg(messID, errStart+"bank: put: upd_womb", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						err = docUpd(b, wFil, bank)
 						if err != nil {
 							replyToMsg(messID, errStart+"bank: put: upd_bank", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						replyToMsg(messID, fmt.Sprintf(
@@ -2486,7 +2520,7 @@ func main() {
 					err = bank.FindOne(ctx, wFil).Decode(&b)
 					if err != nil {
 						replyToMsg(messID, errStart+"bank: take: find_banked", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					var num uint64
@@ -2519,13 +2553,13 @@ func main() {
 					err = docUpd(b, wFil, bank)
 					if err != nil {
 						replyToMsg(messID, errStart+"bank: put: upd_bank", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					err = docUpd(womb, wFil, users)
 					if err != nil {
 						replyToMsg(messID, errStart+"bank: put: upd_womb", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, fmt.Sprintf(
@@ -2542,10 +2576,13 @@ func main() {
 				} else if strings.ToLower(args[1]) == "клан" {
 					replyToMsg(messID, strings.Repeat("клан ", 42), peer, bot)
 					return
-				} else if !isInUsers && strings.ToLower(args[1]) != "статус" {
-					replyToMsg(messID, "Кланы — приватная территория вомбатов. Как и всё в этом боте. У тебя же вомбата нет",
-						peer, bot)
-					return
+				} else if !isInUsers {
+					if !(strings.ToLower(args[1]) == "статус" || (len(args) > 2 && strings.ToLower(args[1]) == "клан" &&
+						strings.ToLower(args[2]) == "статус")) {
+						replyToMsg(messID, "Кланы — приватная территория вомбатов. Как и всё в этом боте. У тебя же вомбата нет",
+							peer, bot)
+						return
+					}
 				}
 				switch strings.ToLower(args[1]) {
 				case "создать":
@@ -2558,7 +2595,7 @@ func main() {
 						return
 					} else if womb.Money < 25000 {
 						replyToMsg(messID,
-							"Ошибка: недостаточно шишей. Требуется 100'000 шишей при себе для создания клана "+
+							"Ошибка: недостаточно шишей. Требуется 25'000 шишей при себе для создания клана "+
 								fmt.Sprintf("(У вас их при себе %d)", womb.Money),
 							peer, bot,
 						)
@@ -2583,8 +2620,8 @@ func main() {
 					tag, name := strings.ToLower(args[2]), strings.Join(args[3:], " ")
 					if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"_id": caseInsensitive(tag)}); err != nil {
-						replyToMsg(messID, errStart+"clans: new: count_tag", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: new: count_tag", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount != 0 {
 						replyToMsg(messID, fmt.Sprintf(
@@ -2596,8 +2633,8 @@ func main() {
 					}
 					if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"members": from}); err != nil {
-						replyToMsg(messID, errStart+"clans: new: count_members", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: new: count_members", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount != 0 {
 						replyToMsg(messID,
@@ -2609,8 +2646,8 @@ func main() {
 					womb.Money -= 25000
 					err = docUpd(womb, wFil, users)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: new: update_money", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: new: update_money", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					nclan := Clan{
@@ -2622,8 +2659,8 @@ func main() {
 					}
 					_, err := clans.InsertOne(ctx, &nclan)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: new: insert", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: new: insert", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if hasTitle(5, womb.Titles) {
@@ -2637,8 +2674,8 @@ func main() {
 						womb.Titles = newTitles
 						err = docUpd(womb, wFil, users)
 						if err != nil {
-							replyToMsg(messID, errStart+"clans: transfer: delete_title", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: transfer: delete_title", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					}
@@ -2660,8 +2697,8 @@ func main() {
 						return
 					} else if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"members": from}); err != nil {
-						replyToMsg(messID, errStart+"clans: join: count_members", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: join: count_members", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount != 0 {
 						replyToMsg(messID,
@@ -2677,11 +2714,10 @@ func main() {
 						return
 					} else if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"_id": strings.ToUpper(args[2])}); err != nil {
-						replyToMsg(messID, errStart+"clans: join: count_tag", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: join: count_tag", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount == 0 {
-						log.Println(strings.ToUpper(args[2]))
 						replyToMsg(messID,
 							fmt.Sprintf("Ошибка: клана с тегом `%s` не существует", args[2]),
 							peer, bot,
@@ -2691,8 +2727,8 @@ func main() {
 					var jClan Clan
 					err = clans.FindOne(ctx, bson.M{"_id": strings.ToUpper(args[2])}).Decode(&jClan)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: join: find_clan", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: join: find_clan", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if len(jClan.Members) >= 7 {
@@ -2702,15 +2738,15 @@ func main() {
 					womb.Money -= 1000
 					err = docUpd(womb, wFil, users)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: join: update_user", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: join: update_user", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					jClan.Members = append(jClan.Members, from)
 					err = docUpd(jClan, bson.M{"_id": strings.ToUpper(args[2])}, clans)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: join: update_clan", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: join: update_clan", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, "Отлично, вы присоединились! У вас взяли 1000 шишей",
@@ -2729,16 +2765,16 @@ func main() {
 						return
 					} else if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"members": from}); err != nil {
-						replyToMsg(messID, errStart+"clans: transfer: count_members_from", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: transfer: count_members_from", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount == 0 {
 						replyToMsg(messID, "Ошибка: вы не состоите ни в каком клане", peer, bot)
 						return
 					} else if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"leader": from}); err != nil {
-						replyToMsg(messID, errStart+"clans: transfer: count_leader_from", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: transfer: count_leader_from", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount == 0 {
 						replyToMsg(messID, "Ошибка: вы не лидер!!!11!!!", peer, bot)
@@ -2749,7 +2785,7 @@ func main() {
 					} else if rCount, err := users.CountDocuments(ctx,
 						bson.M{"name": caseInsensitive(args[2])}); err != nil {
 						replyToMsg(messID, errStart+"", peer, bot)
-						rlog.Println("Error: ", err)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount == 0 {
 						replyToMsg(messID,
@@ -2761,8 +2797,8 @@ func main() {
 					var newLead User
 					err = users.FindOne(ctx, bson.M{"name": caseInsensitive(args[2])}).Decode(&newLead)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: transfer: find_new_lead", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: transfer: find_new_lead", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if strings.ToLower(args[2]) == strings.ToLower(womb.Name) {
@@ -2770,8 +2806,8 @@ func main() {
 						return
 					} else if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"members": newLead.ID}); err != nil {
-						replyToMsg(messID, errStart+"clans: transfer: count_new_lead_clan", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: transfer: count_new_lead_clan", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount == 0 {
 						replyToMsg(messID,
@@ -2783,8 +2819,8 @@ func main() {
 					var uClan Clan
 					err = clans.FindOne(ctx, bson.M{"leader": from}).Decode(&uClan)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: transfer: find_leaders_clan", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: transfer: find_leaders_clan", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					var isIn bool = false
@@ -2804,8 +2840,8 @@ func main() {
 					uClan.Leader = newLead.ID
 					err = docUpd(uClan, bson.M{"_id": uClan.Tag}, clans)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: transfer: update", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: transfer: update", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if hasTitle(5, womb.Titles) {
@@ -2818,8 +2854,8 @@ func main() {
 						}
 						womb.Titles = newTitles
 						if err != nil {
-							replyToMsg(messID, errStart+"clans: transfer: delete_title", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: transfer: delete_title", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					}
@@ -2827,8 +2863,8 @@ func main() {
 						newLead.Titles = append(newLead.Titles, 5)
 						err = docUpd(newLead, bson.M{"_id": newLead.ID}, users)
 						if err != nil {
-							replyToMsg(messID, errStart+"clans: transfer: add_title", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: transfer: add_title", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					}
@@ -2847,8 +2883,8 @@ func main() {
 						return
 					} else if rCount, err := clans.CountDocuments(ctx,
 						bson.M{"members": from}); err != nil {
-						replyToMsg(messID, errStart+"clans: quit: count_clan", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: quit: count_clan", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					} else if rCount == 0 {
 						replyToMsg(messID, "Клан выйти: вы не состоите ни в одном клане", peer, bot)
@@ -2857,15 +2893,15 @@ func main() {
 					var uClan Clan
 					err = clans.FindOne(ctx, bson.M{"members": from}).Decode(&uClan)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: quit: find_clan", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: quit: find_clan", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					if len(uClan.Members) == 1 {
 						_, err = clans.DeleteOne(ctx, bson.M{"_id": uClan.Tag})
 						if err != nil {
-							replyToMsg(messID, errStart+"clans: quit: delete", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: quit: delete", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 						if uClan.Leader == from {
@@ -2880,8 +2916,8 @@ func main() {
 								womb.Titles = newTitles
 								err = docUpd(womb, wFil, users)
 								if err != nil {
-									replyToMsg(messID, errStart+"clans: quit: delete_title", peer, bot)
-									rlog.Println("Error: ", err)
+									replyToMsg(messID, errStart+"clan: quit: delete_title", peer, bot)
+									infl.Println("[ERROR] e: ", err)
 									return
 								}
 							}
@@ -2902,8 +2938,8 @@ func main() {
 					uClan.Members = newMembers
 					err = docUpd(uClan, bson.M{"_id": uClan.Tag}, clans)
 					if err != nil {
-						replyToMsg(messID, errStart+"clans: quit: update", peer, bot)
-						rlog.Println("Error: ", err)
+						replyToMsg(messID, errStart+"clan: quit: update", peer, bot)
+						infl.Println("[ERROR] e: ", err)
 						return
 					}
 					replyToMsg(messID, "Вы вышли из клана. Вы свободны!", peer, bot)
@@ -2929,8 +2965,8 @@ func main() {
 							return
 						} else if rCount, err := clans.CountDocuments(ctx,
 							bson.M{"members": from}); err != nil {
-							replyToMsg(messID, errStart+"clans: status: count_from_clan", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: status: count_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						} else if rCount == 0 {
 							replyToMsg(messID, "Клан статус: вы не состоите ни в одном клане", peer, bot)
@@ -2938,8 +2974,8 @@ func main() {
 						}
 						err = clans.FindOne(ctx, bson.M{"members": from}).Decode(&sClan)
 						if err != nil {
-							replyToMsg(messID, errStart+"clans: status: find_from_clan", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: status: find_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					} else {
@@ -2951,8 +2987,8 @@ func main() {
 							return
 						} else if rCount, err := clans.CountDocuments(ctx,
 							bson.M{"_id": caseInsensitive(args[2])}); err != nil {
-							replyToMsg(messID, errStart+"clans: status: count_clan", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: status: count_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						} else if rCount == 0 {
 							replyToMsg(messID,
@@ -2963,14 +2999,14 @@ func main() {
 						}
 						err = clans.FindOne(ctx, bson.M{"_id": caseInsensitive(args[2])}).Decode(&sClan)
 						if err != nil {
-							replyToMsg(messID, errStart+"clans: status: find_clan", peer, bot)
-							rlog.Println("Error: ", err)
+							replyToMsg(messID, errStart+"clan: status: find_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
 							return
 						}
 					}
 					var (
 						msg string = fmt.Sprintf(
-							"Клан %s [%s]\n 💰 Казна: %d шишей\n 🐽 Участники:\n",
+							"Клан `%s` [%s]\n 💰 Казна: %d шишей\n 🐽 Участники:\n",
 							sClan.Name, sClan.Tag, sClan.Money,
 						)
 						midHealth, midForce uint32
@@ -2984,7 +3020,7 @@ func main() {
 						if rCount, err := users.CountDocuments(ctx,
 							bson.M{"_id": id}); err != nil {
 							replyToMsg(messID, errStart+"clan: status: count_user", peer, bot)
-							rlog.Println("Error: ", err)
+							infl.Println("[ERROR] e: ", err)
 							return
 						} else if rCount == 0 {
 							msg += " - Вомбата нет :("
@@ -2994,7 +3030,7 @@ func main() {
 							err = users.FindOne(ctx, bson.M{"_id": id}).Decode(&tWomb)
 							if err != nil {
 								replyToMsg(messID, errStart+"clan: status: find_user", peer, bot)
-								rlog.Println("Error: ", err)
+								infl.Println("[ERROR] e: ", err)
 								return
 							}
 							msg += fmt.Sprintf(" - %s", tWomb.Name)
@@ -3006,13 +3042,432 @@ func main() {
 						}
 						msg += "\n"
 					}
-					midHealth /= uint32(len(sClan.Members) - int(lost))
-					midForce /= uint32(len(sClan.Members) - int(lost))
+					if uint32(len(sClan.Members)-int(lost)) != 0 {
+						midHealth /= uint32(len(sClan.Members) - int(lost))
+						midForce /= uint32(len(sClan.Members) - int(lost))
+					} else {
+						midHealth, midForce = 0, 0
+					}
 					msg += fmt.Sprintf(
 						" ❤ Среднее здоровье: %d\n ⚡ Средняя мощь: %d\n 👁 XP: %d",
 						midHealth, midForce, sClan.XP,
 					)
 					replyToMsg(messID, msg, peer, bot)
+				case "атака":
+					if len(args) == 2 {
+						replyToMsg(messID, "атака", peer, bot)
+					}
+					switch strings.ToLower(args[2]) {
+					case "атака":
+						replyToMsg(messID, strings.Repeat("атака ", 42), peer, bot)
+					case "на":
+						if len(args) == 3 {
+							sendMsg("Атака на: на кого?", peer, bot)
+							return
+						} else if len(args) > 4 {
+							replyToMsg(messID, "Атака на: слишком много аргументов", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"members": from}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: to: count_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Вы не состоите ни в одном клане", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"leader": from}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: to: count_leader_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Вы не являетесь лидером клана, в котором состоите", peer, bot)
+							return
+						}
+						var fromClan Clan
+						err = clans.FindOne(ctx, bson.M{"leader": from}).Decode(&fromClan)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: to: find_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if ok, from := isInClattacks(fromClan.Tag, clattacks); from {
+							replyToMsg(messID, "Вы уже нападаете на другой клан", peer, bot)
+							return
+						} else if ok {
+							replyToMsg(messID, "На вас уже нападают)", peer, bot)
+							return
+						}
+						tag := strings.ToUpper(args[3])
+						if len([]rune(tag)) > 64 {
+							replyToMsg(messID, "Ошибка: слишком длинный тег!", peer, bot)
+							return
+						} else if !isValidTag(tag) {
+							replyToMsg(messID, "Нелегальный тег", peer, bot)
+							return
+						} else if fromClan.Tag == tag {
+							replyToMsg(messID, "гений", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"_id": tag}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: to: count_clans", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Ошибка: клана с таким тегом не найдено", peer, bot)
+						} else if ok, from := isInClattacks(tag, clattacks); from {
+							replyToMsg(messID, "Клан "+tag+" уже атакует кого-то", peer, bot)
+							return
+						} else if ok {
+							replyToMsg(messID, "Клан "+tag+" уже атакуется", peer, bot)
+							return
+						}
+						var toClan Clan
+						err = clans.FindOne(ctx, bson.M{"_id": tag}).Decode(&toClan)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: to: find_to", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						newClat := Clattack{
+							ID:   fromClan.Tag + "_" + tag,
+							From: fromClan.Tag,
+							To:   tag,
+						}
+						_, err := clattacks.InsertOne(ctx, newClat)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: to: insert", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						replyToMsg(messID, "Отлично! Вы отправили вомбатов ждать согласия на вомбой",
+							peer, bot)
+						sendMsg("АААА!!! НА ВАС НАПАЛ КЛАН "+fromClan.Tag+". предпримите что-нибудь(",
+							toClan.Leader, bot)
+					case "отмена":
+						if len(args) != 3 {
+							replyToMsg(messID, "Клан атака отмена: слишком много аргументов", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"members": from}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: count_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Ошибка: вы не состоите ни в одном клане", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"leader": from}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: count_leader_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Ошибка: вы не являетесь лидером в своём клане", peer, bot)
+							return
+						}
+						var cClan Clan
+						err = clans.FindOne(ctx, bson.M{"leader": from}).Decode(&cClan)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: find_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						is, isfr := isInClattacks(cClan.Tag, clattacks)
+						if !is {
+							replyToMsg(messID, "Вы никого не атакуете и никем не атакуетесь. Вам нечего отменять :)",
+								peer, bot)
+							return
+						}
+						var clat Clattack
+						err = clattacks.FindOne(ctx, bson.M{func(isfr bool) string {
+							if isfr {
+								return "from"
+							}
+							return "to"
+						}(isfr): cClan.Tag}).Decode(&clat)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: find_clattack", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						var (
+							send  bool = true
+							oClan Clan
+						)
+						if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"_id": func(clat Clattack, isfr bool) string {
+								if isfr {
+									return clat.To
+								}
+								return clat.From
+							}(clat, isfr)}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: count_other_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							send = false
+						} else {
+							err = clans.FindOne(ctx, bson.M{"_id": func(clat Clattack, isfr bool) string {
+								if isfr {
+									return clat.To
+								}
+								return clat.From
+							}(clat, isfr)}).Decode(&oClan)
+							if err != nil {
+								replyToMsg(messID, errStart+"clan: attack: cancel: find_other_clan", peer, bot)
+								infl.Println("[ERROR] e: ", err)
+								return
+							}
+						}
+						_, err = clattacks.DeleteOne(ctx, bson.M{"to": clat.To})
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: delete", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						can0, err := getImgs(imgsC, "cancel_0")
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: cancel: get_imgs_0", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						var can1 Imgs
+						if send {
+							can1, err = getImgs(imgsC, "cancel_1")
+							if err != nil {
+								replyToMsg(messID, errStart+"clan: attack: cancel: get_imgs_1", peer, bot)
+								infl.Println("[ERROR] e: ", err)
+								return
+							}
+						}
+						replyWithPhoto(messID, randImg(can0), "Вы "+func(isfr bool) string {
+							if isfr {
+								return "отменили"
+							}
+							return "отклонили"
+						}(isfr)+" клановую атаку", peer, bot)
+						if send {
+							sendPhoto(randImg(can1), "Вашу клановую атаку "+func(isfr bool) string {
+								if isfr {
+									return "отменили"
+								}
+								return "отклонили"
+							}(isfr)+")", oClan.Leader, bot)
+						}
+					case "принять":
+						if len(args) != 3 {
+							replyToMsg(messID, "Слишком много аргументов", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"members": from}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: accept: count_to_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Вы не состоите ни в одном клане", peer, bot)
+							return
+						} else if rCount, err := clans.CountDocuments(ctx,
+							bson.M{"leader": from}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: accept: count_leader_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Вы не являетесь лидером клана", peer, bot)
+							return
+						}
+						var toClan Clan
+						err = clans.FindOne(ctx, bson.M{"leader": from}).Decode(&toClan)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: accept: find_to_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						if is, isfr := isInClattacks(toClan.Tag, clattacks); !is {
+							replyToMsg(messID, "Ваш клан не атакуется/не атакует", peer, bot)
+							return
+						} else if isfr {
+							replyToMsg(messID, "Принимать вомбой может только атакуемая сторона", peer, bot)
+						}
+						var clat Clattack
+						err = clattacks.FindOne(ctx, bson.M{"to": toClan.Tag}).Decode(&clat)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attacl: start: find_clattack", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						if rCount, err := clans.CountDocuments(ctx, bson.M{"_id": clat.From}); err != nil {
+							replyToMsg(messID, errStart+"clan: attack: accept: count_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						} else if rCount == 0 {
+							replyToMsg(messID, "Ошибка: атакующего клана не существует!", peer, bot)
+							return
+						}
+						var frClan Clan
+						err = clans.FindOne(ctx, bson.M{"_id": clat.From}).Decode(&frClan)
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: accept: find_from_clan", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						var (
+							toclwar, frclwar Clwar
+							tWomb            User
+						)
+						for sClan, clw := range map[*Clan]*Clwar{&toClan: &toclwar, &frClan: &frclwar} {
+							var lost uint8 = 0
+							for _, id := range sClan.Members {
+								if rCount, err := users.CountDocuments(ctx,
+									bson.M{"_id": id}); err != nil {
+									replyToMsg(messID, errStart+"clan: attack: accept: count_user", peer, bot)
+									infl.Println("[ERROR] e: ", err)
+									return
+								} else if rCount == 0 {
+									lost++
+									continue
+								} else {
+									err = users.FindOne(ctx, bson.M{"_id": id}).Decode(&tWomb)
+									if err != nil {
+										replyToMsg(messID, errStart+"clan: attack: accept: find_user", peer, bot)
+										infl.Println("[ERROR] e: ", err)
+										return
+									}
+									if id == sClan.Leader {
+									}
+									clw.Health += tWomb.Health
+									clw.Force += tWomb.Force
+								}
+								if uint32(len(sClan.Members)-int(lost)) != 0 {
+									clw.Health /= uint32(len(sClan.Members) - int(lost))
+									clw.Force /= uint32(len(sClan.Members) - int(lost))
+								} else {
+									replyToMsg(messID,
+										"Ошибка: у клана ["+sClan.Tag+"] все вомбаты потеряны( ответьте командой /admin",
+										peer, bot,
+									)
+									return
+								}
+							}
+						}
+						atimgs, err := getImgs(imgsC, "attacks")
+						if err != nil {
+							replyToMsg(messID, errStart+"clan: attack: accept: imgs", peer, bot)
+							infl.Println("[ERROR] e: ", err)
+							return
+						}
+						im := randImg(atimgs)
+						ph1 := replyWithPhoto(messID, im, "", peer, bot)
+						ph2 := sendPhoto(im, "", frClan.Leader, bot)
+						war1 := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
+						war2 := replyToMsg(ph2, fmt.Sprintf(
+							"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
+							womb.Name), frClan.Leader, bot,
+						)
+						time.Sleep(5 * time.Second)
+						h1, h2 := int(toclwar.Health), int(frclwar.Health)
+						for _, round := range []int{1, 2, 3} {
+							f1 := uint32(2 + rand.Intn(int(toclwar.Force-1)))
+							f2 := uint32(2 + rand.Intn(int(frclwar.Force-1)))
+							editMsg(war1, fmt.Sprintf(
+								"РАУНД %d\n\n[%s]:\n - здоровье: %d\n - Ваш удар: %d\n\n[%s]:\n - здоровье: %d",
+								round, toClan.Tag, h1, f1, frClan.Tag, h2), peer, bot)
+							editMsg(war2, fmt.Sprintf(
+								"РАУНД %d\n\n[%s]:\n - здоровье: %d\n - Ваш удар: %d\n\n[%s]:\n - здоровье: %d",
+								round, frClan.Tag, h2, f2, toClan.Tag, h1), frClan.Leader, bot)
+							time.Sleep(3 * time.Second)
+							h1 -= int(f2)
+							h2 -= int(f1)
+							editMsg(war1, fmt.Sprintf(
+								"РАУНД %d\n\n[%s]\n - здоровье: %d\n - Ваш удар: %d\n\n[%s]:\n - здоровье: %d\n - 💔 удар: %d",
+								round, toClan.Tag, h1, f1, frClan.Tag, h2, f2), peer, bot)
+							editMsg(war2, fmt.Sprintf(
+								"РАУНД %d\n\n[%s]:\n - здоровье: %d\n - Ваш удар: %d\n\n[%s]:\n - здоровье: %d\n - 💔 удар: %d",
+								round, frClan.Tag, h2, f2, toClan.Tag, h1, f1), frClan.Leader, bot)
+							time.Sleep(5 * time.Second)
+							if int(h2)-int(f1) <= 5 && int(h1)-int(f2) <= 5 {
+								editMsg(war1,
+									"Оба клана сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
+									peer, bot)
+								editMsg(war2,
+									"Оба клана сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
+									frClan.Leader, bot)
+								time.Sleep(5 * time.Second)
+								break
+							} else if int(h2)-int(f1) <= 5 {
+								editMsg(war1, fmt.Sprintf(
+									"В раунде %d благодаря силе участников победил клан...",
+									round), peer, bot)
+								editMsg(war2, fmt.Sprintf(
+									"В раунде %d благодаря лишению у другого здоровья победил клан...",
+									round), frClan.Leader, bot)
+								time.Sleep(3 * time.Second)
+								toClan.XP += 10
+								editMsg(war1, fmt.Sprintf(
+									"Победил клан `%s` [%s]!!!\nВы получили 10 XP, теперь их у вас %d",
+									toClan.Name, toClan.Tag, toClan.XP), peer, bot)
+								editMsg(war2, fmt.Sprintf(
+									"Победил клан `%s` [%s]!!!\nВаше состояние не изменилось)",
+									toClan.Name, toClan.Tag), frClan.Leader, bot)
+								break
+							} else if int(h1)-int(f2) <= 5 {
+								editMsg(war1, fmt.Sprintf(
+									"В раунде %d благодаря силе участников победил клан...",
+									round), peer, bot)
+								editMsg(war2, fmt.Sprintf(
+									"В раунде %d благодаря лишению у другого здоровья победил клан...",
+									round), frClan.Leader, bot)
+								time.Sleep(3 * time.Second)
+								frClan.XP += 10
+								editMsg(war2, fmt.Sprintf(
+									"Победил клан `%s` %s!!!\nВы получили 10 XP, теперь их у Вас %d",
+									frClan.Name, frClan.Tag, frClan.XP), frClan.Leader, bot)
+								womb.Health = 5
+								womb.Money = 50
+								editMsg(war1, fmt.Sprintf(
+									"Победил клан `%s` [%s]!!!\nВаше состояние не изменилось)",
+									frClan.Name, frClan.Tag), peer, bot)
+								break
+							} else if round == 3 {
+								frClan.XP += 10
+								if h1 < h2 {
+									editMsg(war2, fmt.Sprintf(
+										"И победил клан `%s` %s!!!\nВы получили 10 XP, теперь их у Вас %d",
+										frClan.Name, frClan.Tag, frClan.XP), frClan.Leader, bot)
+									editMsg(war1, fmt.Sprintf(
+										"И победил клан `%s` [%s]!!!\nВаше состояние не изменилось)",
+										frClan.Name, frClan.Tag), peer, bot)
+								} else {
+									toClan.XP += 10
+									editMsg(war1, fmt.Sprintf(
+										"Победил клан `%s` [%s]!!!\nВы получили 10 XP, теперь их у вас %d",
+										toClan.Name, toClan.Tag, toClan.XP), peer, bot)
+									editMsg(war2, fmt.Sprintf(
+										"Победил клан `%s` [%s]!!!\nВаше состояние не изменилось)",
+										toClan.Name, toClan.Tag), frClan.Leader, bot)
+								}
+							}
+							err = docUpd(toClan, bson.M{"_id": toClan.Tag}, clans)
+							if err != nil {
+								replyToMsg(messID, errStart+"clan: attack: accept: update_to", peer, bot)
+								infl.Println("[ERROR] e: ", err)
+								return
+							}
+							err = docUpd(frClan, bson.M{"_id": frClan.Tag}, clans)
+							if err != nil {
+								replyToMsg(messID, errStart+"clan: attack: accept: update_from", peer, bot)
+								infl.Println("[ERROR] e: ", err)
+								return
+							}
+							_, err = clattacks.DeleteOne(ctx, bson.M{"_id": clat.ID})
+							if err != nil {
+								replyToMsg(messID, errStart+"clan: attack: accept: delete", peer, bot)
+								infl.Println("[ERROR] e: ", err)
+								return
+							}
+						}
+					default:
+						replyToMsg(messID, "что", peer, bot)
+						return
+					}
 				default:
 					replyToMsg(messID, fmt.Sprintf("Что такое `%s`?", args[1]),
 						peer, bot,
@@ -3025,12 +3480,12 @@ func main() {
 				to, err := strconv.Atoi(args[1])
 				if err != nil {
 					replyToMsg(messID, errStart+"sendmsg: atoi", peer, bot)
-					rlog.Println("Error: ", err)
+					infl.Println("[ERROR] e: ", err)
 					return
 				}
 				sendMsgMD(strings.Join(args[2:], " "), int64(to), bot)
 				replyToMsg(messID, "Запрос отправлен успешно!", peer, bot)
 			}
-		}(update, titles, bot, users, titlesC, attacks, imgsC, bank, clans)
+		}(update, titles, bot, users, titlesC, attacks, imgsC, bank, clans, clattacks)
 	}
 }
