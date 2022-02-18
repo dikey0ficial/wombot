@@ -117,18 +117,6 @@ func init() {
 		errl.Println(err)
 		os.Exit(1)
 	}
-	if strings.ToLower(os.Getenv("HEROKU")) == "true" {
-		go func() {
-			s := NewServer()
-			for {
-				err := s.Run()
-				if err != nil {
-					errl.Println("Server error: ", err)
-				}
-			}
-		}()
-		infl.Println("Started server")
-	}
 }
 
 // checkerr реализует проверку ошибок без паники
