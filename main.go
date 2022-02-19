@@ -2744,6 +2744,85 @@ func main() {
 						fmt.Sprintf("В ваш клан вступил вомбат `%s`", womb.Name),
 						jClan.Leader, bot,
 					)
+				case "назначить":
+					if len(args) == 2 {
+						replyToMsg(messID, "конечно", peer, bot)
+						return
+					}
+					switch args[2] {
+					case "назначить":
+						replyToMsg(messID, strings.Repeat("назначить", 42), peer, bot)
+						return
+					case "лидера":
+						fallthrough
+					case "лидер":
+						break
+					case "казначея":
+						fallthrough
+					case "казначеем":
+						fallthrough
+					case "казначей":
+						if len(args) != 4 {
+							replyToMsg(messID, "Слишком много или мало аргументов", peer, bot)
+							return
+						} else if !isInUsers {
+							replyToMsg(messID, "Кланы — приватная территория вомбатов. У тебя вомбата нет.", peer, bot)
+							return
+						}
+						if c, err := clans.CountDocuments(ctx, bson.M{"leader": from}); err != nil {
+							replyToMsg(messID, errStart+"count_leader_clan", peer, bot)
+							errl.Println("e: ", err)
+							return
+						} else if c == 0 {
+							replyToMsg(messID, "Вы не состоите ни в одном клане либо не являетесь лидером клана", peer, bot)
+							return
+						}
+						var sClan Clan
+						if err := clans.FindOne(ctx, bson.M{"leader": from}).Decode(&sClan); err != nil {
+							replyToMsg(messID, errStart+"find_leader_clan", peer, bot)
+							errl.Println("e: ", err)
+							return
+						}
+						lbid := sClan.Banker
+						name := args[3]
+						if c, err := users.CountDocuments(ctx, bson.M{"name": caseInsensitive(name)}); err != nil {
+							replyToMsg(messID, errStart+"count_new_banker", peer, bot)
+							errl.Println("e: ", err)
+							return
+						} else if c == 0 {
+							replyToMsg(messID, "Вомбата с таким ником не найдено", peer, bot)
+							return
+						}
+						var (
+							nb User
+						)
+						if err := users.FindOne(ctx, bson.M{"name": caseInsensitive(name)}).Decode(&nb); err != nil {
+							replyToMsg(messID, errStart+"find_new_banker", peer, bot)
+							errl.Println("e: ", err)
+							return
+						}
+						sClan.Banker = nb.ID
+						if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
+							replyToMsg(messID, errStart+"update_clan", peer, bot)
+							errl.Println("e: ", err)
+							return
+						}
+						replyToMsg(messID, "Казначей успешно изменён! Теперь это "+nb.Name, peer, bot)
+						if nb.ID != from {
+							sendMsg("Вы стали казначеем в клане `"+sClan.Name+"` ["+sClan.Tag+"]", nb.ID, bot)
+						}
+						if lbid != from && lbid != 0 {
+							sendMsg("Вы больше не казначеем... (в клане `"+sClan.Name+"` ["+sClan.Tag+"])", lbid, bot)
+						}
+					default:
+						replyToMsg(messID, "Не знаю такой роли в клане(", peer, bot)
+						return
+					}
+					if args[2] != "лидер" && args[2] != "лидера" { // костыль чтобы можно было fallthrough
+						return
+					}
+					args = append([]string{"клан", "передать"}, args[2:]...)
+					fallthrough
 				case "передать":
 					if len(args) != 3 {
 						replyToMsg(messID, "Ошибка: слишком много или мало аргументов. "+
@@ -3007,7 +3086,7 @@ func main() {
 						lost                uint8 = 0
 					)
 					var tWomb User
-					for i, id := range append([]int64{sClan.Leader}, sClan.Members...) {
+					for i, id := range sClan.Members {
 						if id == sClan.Leader && i != 0 {
 							continue
 						}
@@ -3030,7 +3109,7 @@ func main() {
 							msg += fmt.Sprintf("        %d. %s", i+1, tWomb.Name)
 							if id == sClan.Leader {
 								msg += " | Лидер"
-							} else if id == sClan.Banker {
+							} else if sClan.Banker == id {
 								msg += " | Казначей"
 							}
 							midHealth += tWomb.Health
@@ -3551,7 +3630,6 @@ func main() {
 						replyToMsg(messID, "Что такое "+args[2]+"?", peer, bot)
 						return
 					}
-
 				case "казна":
 					if len(args) == 2 {
 						replyToMsg(messID, "жесь", peer, bot)
