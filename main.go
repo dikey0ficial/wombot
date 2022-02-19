@@ -64,6 +64,7 @@ type Clan struct {
 	Money          uint64    `bson:"money"` // Казна
 	XP             uint32    `bson:"xp"`
 	Leader         int64     `bson:"leader"`
+	Banker         int64     `bson:"banker"`
 	Members        []int64   `bson:"members"`
 	Banned         []int64   `bson:"banned"`
 	LastRewarsTime time.Time `bson:"last_reward_time"`
@@ -2922,18 +2923,24 @@ func main() {
 						}
 						newMembers = append(newMembers, id)
 					}
+					var (
+						rep    string = "Вы вышли из клана. Вы свободны!"
+						msgtol string = "Вомбат `" + womb.Name + "` вышел из клана."
+					)
 					uClan.Members = newMembers
+					if uClan.Banker == from && uClan.Leader != uClan.Banker {
+						uClan.Banker = uClan.Leader
+						rep += "\nБанкиром вместо вас стал лидер клана."
+						msgtol += "\nТак как этот вомбат был банкиром, Вы стали банкиром клана."
+					}
 					err = docUpd(uClan, bson.M{"_id": uClan.Tag}, clans)
 					if err != nil {
 						replyToMsg(messID, errStart+"clan: quit: update", peer, bot)
 						errl.Println("e: ", err)
 						return
 					}
-					replyToMsg(messID, "Вы вышли из клана. Вы свободны!", peer, bot)
-					sendMsg(
-						fmt.Sprintf("Вомбат `%s` вышел из клана", womb.Name),
-						uClan.Leader, bot,
-					)
+					replyToMsg(messID, rep, peer, bot)
+					sendMsg(msgtol, uClan.Leader, bot)
 				case "статус":
 					if len(args) > 3 {
 						replyToMsg(messID,
@@ -3023,7 +3030,7 @@ func main() {
 							msg += fmt.Sprintf("        %d. %s", i+1, tWomb.Name)
 							if id == sClan.Leader {
 								msg += " | Лидер"
-							} else if hasTitle(6, tWomb.Titles) {
+							} else if id == sClan.Banker {
 								msg += " | Казначей"
 							}
 							midHealth += tWomb.Health
@@ -3577,7 +3584,7 @@ func main() {
 							errl.Println("e: ", err)
 							return
 						}
-						if !(sClan.Leader == womb.ID || hasTitle(6, womb.Titles)) {
+						if !(sClan.Leader == womb.ID || sClan.Banker == womb.ID) {
 							replyToMsg(messID, "Ошибка: вы не обладаете правом снимать деньги с казны (только лидер и казначей)",
 								peer, bot,
 							)
