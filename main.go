@@ -92,7 +92,6 @@ var (
 		Token     string `toml:"tg_token" env:"TGTOKEN"`
 		MongoURL  string `toml:"mongo_url" env:"MONGOURL"`
 		SupChatID int64  `toml:"support_chat_id" env:"SUPCHATID"`
-		Debug     bool   `toml:"debug" env:"DEBUG"`
 	}{}
 )
 
@@ -2755,8 +2754,10 @@ func main() {
 						return
 					case "лидера":
 						fallthrough
+					case "лидером":
+						fallthrough
 					case "лидер":
-						break
+						replyToMsg(messID, "Используйте \"клан передать [имя]\" вместо данной команды", peer, bot)
 					case "казначея":
 						fallthrough
 					case "казначеем":
@@ -2801,6 +2802,17 @@ func main() {
 							errl.Println("e: ", err)
 							return
 						}
+						var is bool
+						for _, id := range sClan.Members {
+							if id == nb.ID {
+								is = true
+								break
+							}
+						}
+						if !is {
+							replyToMsg(messID, "Данный вобат не состоит в Вашем клане", peer, bot)
+							return
+						}
 						sClan.Banker = nb.ID
 						if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
 							replyToMsg(messID, errStart+"update_clan", peer, bot)
@@ -2818,11 +2830,6 @@ func main() {
 						replyToMsg(messID, "Не знаю такой роли в клане(", peer, bot)
 						return
 					}
-					if args[2] != "лидер" && args[2] != "лидера" { // костыль чтобы можно было fallthrough
-						return
-					}
-					args = append([]string{"клан", "передать"}, args[2:]...)
-					fallthrough
 				case "передать":
 					if len(args) != 3 {
 						replyToMsg(messID, "Ошибка: слишком много или мало аргументов. "+
