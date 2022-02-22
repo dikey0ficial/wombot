@@ -67,7 +67,7 @@ type Clan struct {
 	Banker         int64     `bson:"banker"`
 	Members        []int64   `bson:"members"`
 	Banned         []int64   `bson:"banned"`
-	LastRewarsTime time.Time `bson:"last_reward_time"`
+	LastRewardTime time.Time `bson:"last_reward_time"`
 }
 
 // Clattack реализует клановую атаку
@@ -4005,6 +4005,96 @@ func main() {
 					}
 					replyToMsg(messID, "Успешно!", peer, bot)
 					sendMsg(fmt.Sprintf("Вы были разбанены в клане `%s` [%s]", sClan.Name, sClan.Tag), kWomb.ID, bot)
+				case "награда":
+					if !isInUsers {
+						replyToMsg(messID, "Кланы — приватная территория вомбатов. У тебя вомбата нет.", peer, bot)
+						return
+					}
+					if c, err := clans.CountDocuments(ctx, bson.M{"members": from}); err != nil {
+						replyToMsg(messID, errStart+"count_from_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					} else if c == 0 {
+						replyToMsg(messID, "Вы не состоите ни в одном клане", peer, bot)
+						return
+					}
+					var sClan Clan
+					if err := clans.FindOne(ctx, bson.M{"members": from}).Decode(&sClan); err != nil {
+						replyToMsg(messID, errStart+"find_from_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					if !(from == sClan.Leader || from == sClan.Banker) {
+						replyToMsg(messID,
+							"Для того, чтобы получить награду, вы должны быть казначеем или лидером",
+							peer, bot,
+						)
+						return
+					}
+					if e := time.Now().Sub(sClan.LastRewardTime); e < 24*time.Hour {
+						left := (24 * time.Hour) - e
+						replyToMsg(messID,
+							fmt.Sprintf(
+								"С момента прошлого получения награды не прошло 24 часов. "+
+									"Осталось %d часов %d минут",
+								int64(left.Hours()), int64(left.Minutes())-int64(left.Hours())*60,
+							),
+							peer, bot,
+						)
+						debl.Printf("%.f, %.f, %v, %v", left.Hours(), left.Hours()*60-left.Minutes(), left.Hours(),
+							left.Hours()*60-left.Minutes())
+						return
+					}
+					add := 500 + rand.Intn(200) - rand.Intn(200)
+					sClan.Money += uint64(add)
+					sClan.LastRewardTime = time.Now()
+					if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
+						replyToMsg(messID, errStart+"update_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					replyToMsg(messID,
+						fmt.Sprintf(
+							"В казну клана поступило %d шишей! Теперь их %d", add, sClan.Money,
+						),
+						peer, bot,
+					)
+				case "забаненные":
+					if !isInUsers {
+						replyToMsg(messID, "Кланы — приватная территория вомбатов. У тебя вомбата нет.", peer, bot)
+						return
+					}
+					if c, err := clans.CountDocuments(ctx, bson.M{"members": from}); err != nil {
+						replyToMsg(messID, errStart+"count_from_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					} else if c == 0 {
+						replyToMsg(messID, "Вы не состоите ни в одном клане", peer, bot)
+						return
+					}
+					var sClan Clan
+					if err := clans.FindOne(ctx, bson.M{"members": from}).Decode(&sClan); err != nil {
+						replyToMsg(messID, errStart+"find_from_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					if from != sClan.Leader {
+						replyToMsg(messID, "Данный раздел доступен только лидерам клана; вы не являетесь лидером.", peer, bot)
+						return
+					}
+					if len(sClan.Banned) == 0 {
+						replyToMsg(messID, "Никто не в бане!", peer, bot)
+						return
+					}
+					var msg string = "⛔ Список забаненных:\n"
+					for _, id := range sClan.Banned {
+						var bWomb User
+						if err := users.FindOne(ctx, bson.M{"_id": id}).Decode(&bWomb); err != nil {
+							msg += " — [в процессе нахождения вомбата произошла ошибка]\n"
+						}
+						msg += " — " + bWomb.Name + "\n"
+					}
+					replyToMsg(messID, msg, peer, bot)
 				default:
 					replyToMsg(messID, fmt.Sprintf("Что такое `%s`?", args[1]),
 						peer, bot,
