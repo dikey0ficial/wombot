@@ -59,15 +59,21 @@ type Banked struct {
 
 // Clan реализует клан
 type Clan struct {
-	Tag            string    `bson:"_id"`
-	Name           string    `bson:"name"`
-	Money          uint64    `bson:"money"` // Казна
-	XP             uint32    `bson:"xp"`
-	Leader         int64     `bson:"leader"`
-	Banker         int64     `bson:"banker"`
-	Members        []int64   `bson:"members"`
-	Banned         []int64   `bson:"banned"`
-	LastRewardTime time.Time `bson:"last_reward_time"`
+	Tag            string       `bson:"_id"`
+	Name           string       `bson:"name"`
+	Money          uint64       `bson:"money"` // Казна
+	XP             uint32       `bson:"xp"`
+	Leader         int64        `bson:"leader"`
+	Banker         int64        `bson:"banker"`
+	Members        []int64      `bson:"members"`
+	Banned         []int64      `bson:"banned"`
+	LastRewardTime time.Time    `bson:"last_reward_time"`
+	Settings       ClanSettings `bson:"settings"`
+}
+
+// ClanSettings реализует настройки клана
+type ClanSettings struct {
+	AviableToJoin bool `bson:"aviable_to_join"`
 }
 
 // Clattack реализует клановую атаку
@@ -415,6 +421,13 @@ func cins(s string) primitive.Regex {
 		Pattern: fmt.Sprintf("^%s$", s),
 		Options: "i",
 	}
+}
+
+func b2s(b bool) string {
+	if b {
+		return "да"
+	}
+	return "нет"
 }
 
 var (
@@ -2656,7 +2669,12 @@ func main() {
 						Name:    name,
 						Money:   100,
 						Leader:  from,
+						Banker:  from,
 						Members: []int64{from},
+						Banned:  []int64{},
+						Settings: ClanSettings{
+							AviableToJoin: true,
+						},
 					}
 					_, err := clans.InsertOne(ctx, &nclan)
 					if err != nil {
@@ -2734,6 +2752,9 @@ func main() {
 					}
 					if len(jClan.Members) >= 7 {
 						replyToMsg(messID, "Ошибка: в клане слишком много игроков :(", peer, bot)
+						return
+					} else if !(jClan.Settings.AviableToJoin) {
+						replyToMsg(messID, "К сожалению, клан закрыт для вступления", peer, bot)
 						return
 					}
 					for _, id := range jClan.Banned {
@@ -4148,6 +4169,67 @@ func main() {
 						return
 					}
 					replyToMsg(messID, fmt.Sprintf("Имя Вашего клана было успешно сменено на `%s`", name), peer, bot)
+				case "настройки":
+					if len(args) > 4 {
+						replyToMsg(messID, "слишком много аргументов", peer, bot)
+					}
+					if !isInUsers {
+						replyToMsg(messID, "Кланы — приватная территория вомбатов. У тебя вомбата нет.", peer, bot)
+					}
+					if c, err := clans.CountDocuments(ctx, bson.M{"leader": from}); err != nil {
+						replyToMsg(messID, errStart+"count_leader_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					} else if c == 0 {
+						replyToMsg(messID, "Вы не являетесь лидером ни одного клана.", peer, bot)
+						return
+					}
+					var sClan Clan
+					if err := clans.FindOne(ctx, bson.M{"leader": from}).Decode(&sClan); err != nil {
+						replyToMsg(messID, errStart+"find_leader_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					if len(args) == 2 {
+						replyToMsg(messID,
+							fmt.Sprintf(
+								"Настройки клана:\n"+
+									"  доступен_для_входа: %s",
+								b2s(sClan.Settings.AviableToJoin),
+							),
+							peer, bot,
+						)
+					}
+					switch strings.ToLower(args[2]) {
+					case "доступен_для_входа":
+						if len(args) == 3 {
+							replyToMsg(messID, "доступен_для_входа: "+b2s(sClan.Settings.AviableToJoin), peer, bot)
+							return
+						} else if ans := strings.ToLower(args[3]); ans == "да" {
+							sClan.Settings.AviableToJoin = true
+						} else if ans == "нет" {
+							sClan.Settings.AviableToJoin = false
+						} else {
+							replyToMsg(messID, "Поддерживаются только ответы `да` и `нет`", peer, bot)
+							return
+						}
+					default:
+						replyToMsg(messID, fmt.Sprintf("Настройка с именем `%s не обнаружена", strings.ToLower(args[2])), peer, bot)
+						return
+					}
+					if err := docUpd(sClan, bson.M{"leader": from}, clans); err != nil {
+						replyToMsg(messID, errStart+"update_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					replyToMsg(messID,
+						fmt.Sprintf(
+							"Настройка `%s` теперь имеет значение `%s`",
+							strings.ToLower(args[2]),
+							strings.ToLower(args[3]),
+						),
+						peer, bot,
+					)
 				default:
 					replyToMsg(messID, fmt.Sprintf("Что такое `%s`?", args[1]),
 						peer, bot,
