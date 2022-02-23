@@ -509,7 +509,7 @@ func main() {
 		if update.Message == nil {
 			continue
 		} else if update.Message.Photo != nil {
-			infl.Println("img ", (update.Message.Photo)[0].FileID)
+			infl.Println("img:", (update.Message.Photo)[0].FileID, "from:", update.Message.From.UserName, update.Message.From.ID)
 		}
 		if update.Message.Chat.ID == conf.SupChatID {
 			// MESSAGE_ADMIN_CHAT
@@ -3113,8 +3113,8 @@ func main() {
 						lost                uint8 = 0
 					)
 					var tWomb User
-					for i, id := range sClan.Members {
-						if id == sClan.Leader && i != 0 {
+					for i, id := range append([]int64{sClan.Leader, sClan.Banker}, sClan.Members...) { // append для порядка
+						if (id == sClan.Leader && i != 0) || (id == sClan.Banker && (i != 1 && i != 0)) {
 							continue
 						}
 						if rCount, err := users.CountDocuments(ctx,
@@ -4109,6 +4109,45 @@ func main() {
 						msg += " — " + bWomb.Name + "\n"
 					}
 					replyToMsg(messID, msg, peer, bot)
+				case "переименовать":
+					if len(args) < 3 {
+						replyToMsg(messID, "Слишком мало аргументов! Синтаксис: `клан переименовать [имя (можно пробелы)]`", peer, bot)
+						return
+					}
+					if !isInUsers {
+						replyToMsg(messID, "Кланы — приватная территория вомбатов. У тебя вомбата нет.", peer, bot)
+						return
+					}
+					if c, err := clans.CountDocuments(ctx, bson.M{"leader": from}); err != nil {
+						replyToMsg(messID, errStart+"count_leader_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					} else if c == 0 {
+						replyToMsg(messID, "Вы не являетесь лидером ни в одном клане", peer, bot)
+						return
+					}
+					name := strings.Join(args[2:], " ")
+					if len([]rune(name)) > 64 {
+						replyToMsg(messID, "Слишком длинное имя! Оно должно быть максимум 64 символов",
+							peer, bot,
+						)
+						return
+					} else if len([]rune(name)) < 2 {
+						replyToMsg(messID, "Слишком короткое имя! Оно должно быть минимум 3 символа",
+							peer, bot,
+						)
+						return
+					}
+					if _, err := clans.UpdateOne(ctx, bson.M{"leader": from}, bson.M{
+						"$set": bson.M{
+							"name": name,
+						},
+					}); err != nil {
+						replyToMsg(messID, errStart+"update_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					replyToMsg(messID, fmt.Sprintf("Имя Вашего клана было успешно сменено на `%s`", name), peer, bot)
 				default:
 					replyToMsg(messID, fmt.Sprintf("Что такое `%s`?", args[1]),
 						peer, bot,
