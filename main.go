@@ -515,7 +515,20 @@ func main() {
 			// MESSAGE_ADMIN_CHAT
 			go func(update tg.Update, bot *tg.BotAPI) {
 				if update.Message.ReplyToMessage == nil || update.Message.ReplyToMessage.From.ID != bot.Self.ID {
-					return
+					peer := update.Message.Chat.ID
+					txt, messID := strings.TrimSpace(update.Message.Text), update.Message.MessageID
+					if args := strings.Fields(txt); len(args) >= 3 && strings.ToLower(args[0]) == "sendmsg" {
+						to, err := strconv.Atoi(args[1])
+						if err != nil {
+							replyToMsg(messID, "error converting string to int64", peer, bot)
+							errl.Println("e: ", err)
+							return
+						}
+						sendMsgMD(strings.Join(args[2:], " "), int64(to), bot)
+						replyToMsg(messID, "Запрос отправлен успешно!", peer, bot)
+					} else if args := strings.Fields(txt); len(args) == 2 && strings.ToLower(args[0]) == "sendmg" {
+						replyWithPhoto(messID, args[1], "", peer, bot)
+					}
 				}
 				strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
 				omID, err := strconv.ParseInt(strMessID, 10, 64)
@@ -4112,6 +4125,11 @@ func main() {
 				}
 				sendMsgMD(strings.Join(args[2:], " "), int64(to), bot)
 				replyToMsg(messID, "Запрос отправлен успешно!", peer, bot)
+			} else if args := strings.Fields(txt); len(args) == 2 && strings.ToLower(args[0]) == "sendmg" {
+				if !hasTitle(0, womb.Titles) {
+					return
+				}
+				replyWithPhoto(messID, args[1], "", peer, bot)
 			}
 		}(update, titles, bot, users, titlesC, attacks, imgsC, bank, clans, clattacks)
 	}
