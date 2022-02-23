@@ -529,6 +529,7 @@ func main() {
 					} else if args := strings.Fields(txt); len(args) == 2 && strings.ToLower(args[0]) == "sendmg" {
 						replyWithPhoto(messID, args[1], "", peer, bot)
 					}
+					return
 				}
 				strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
 				omID, err := strconv.ParseInt(strMessID, 10, 64)
