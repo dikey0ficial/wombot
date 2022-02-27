@@ -67,6 +67,7 @@ type Clan struct {
 	Banker         int64        `bson:"banker"`
 	Members        []int64      `bson:"members"`
 	Banned         []int64      `bson:"banned"`
+	GroupID        int64        `bson:"group_id"`
 	LastRewardTime time.Time    `bson:"last_reward_time"`
 	Settings       ClanSettings `bson:"settings"`
 }
@@ -1044,6 +1045,7 @@ func main() {
 							Banker:  from,
 							Members: []int64{from},
 							Banned:  []int64{},
+							GroupID: peer,
 							Settings: ClanSettings{
 								AviableToJoin: true,
 							},
@@ -1071,7 +1073,7 @@ func main() {
 							}
 						}
 						replyToMsg(messID,
-							fmt.Sprintf("Клан `%s` успешно создан! У вас взяли 25'000 шишей", name),
+							fmt.Sprintf("Клан `%s` успешно создан и привязан к этой группе! У вас взяли 25'000 шишей", name),
 							peer, bot,
 						)
 					case "вступить":
@@ -1127,6 +1129,9 @@ func main() {
 							return
 						} else if !(jClan.Settings.AviableToJoin) {
 							replyToMsg(messID, "К сожалению, клан закрыт для вступления", peer, bot)
+							return
+						} else if peer != jClan.GroupID {
+							replyToMsg(messID, "Для вступления в клан Вы должны быть в зарегестрированном чате клана", peer, bot)
 							return
 						}
 						for _, id := range jClan.Banned {
@@ -1440,6 +1445,9 @@ func main() {
 						}
 						replyToMsg(messID, rep, peer, bot)
 						sendMsg(msgtol, uClan.Leader, bot)
+						if peer != uClan.GroupID {
+							sendMsg("Вомбат "+womb.Name+" вышел из клана.", uClan.GroupID, bot)
+						}
 					case "статус":
 						if len(args) > 3 {
 							replyToMsg(messID,
@@ -2189,6 +2197,16 @@ func main() {
 								),
 								peer, bot,
 							)
+							sendMsg(
+								fmt.Sprintf("%s положил(а) %d шишей в казну клана", womb.Name, take),
+								sClan.Leader, bot,
+							)
+							if peer != sClan.GroupID {
+								sendMsg(
+									fmt.Sprintf("%s положил(а) %d шишей в казну клана", womb.Name, take),
+									sClan.GroupID, bot,
+								)
+							}
 						default:
 							replyToMsg(messID, fmt.Sprintf("Что такое `%s`?", args[2]),
 								peer, bot,
@@ -4251,109 +4269,6 @@ func main() {
 					}
 				}
 				switch strings.ToLower(args[1]) {
-				case "создать":
-					if len(args) < 4 {
-						replyToMsg(messID,
-							"Клан создать: недостаточно аргументов. Синтаксис: клан создать "+
-								"[тег (3-4 латинские буквы)] [имя (можно пробелы)]",
-							peer, bot,
-						)
-						return
-					} else if womb.Money < 25000 {
-						replyToMsg(messID,
-							"Ошибка: недостаточно шишей. Требуется 25'000 шишей при себе для создания клана "+
-								fmt.Sprintf("(У вас их при себе %d)", womb.Money),
-							peer, bot,
-						)
-						return
-					} else if l := len([]rune(args[2])); !(l >= 3 && l <= 5) {
-						replyToMsg(messID, "Слишком длинный тэг!", peer, bot)
-						return
-					} else if !isValidTag(args[2]) {
-						replyToMsg(messID, "Нелегальный тэг(", peer, bot)
-						return
-					} else if name := strings.Join(args[3:], " "); len([]rune(name)) > 64 {
-						replyToMsg(messID, "Слишком длинное имя! Оно должно быть максимум 64 символов",
-							peer, bot,
-						)
-						return
-					} else if len([]rune(name)) < 2 {
-						replyToMsg(messID, "Слишком короткое имя! Оно должно быть минимум 3 символа",
-							peer, bot,
-						)
-						return
-					}
-					tag, name := strings.ToLower(args[2]), strings.Join(args[3:], " ")
-					if rCount, err := clans.CountDocuments(ctx,
-						bson.M{"_id": cins(tag)}); err != nil {
-						replyToMsg(messID, errStart+"clan: new: count_tag", peer, bot)
-						errl.Println("e: ", err)
-						return
-					} else if rCount != 0 {
-						replyToMsg(messID, fmt.Sprintf(
-							"Ошибка: клан с тегом `%s` уже существует",
-							tag),
-							peer, bot,
-						)
-						return
-					}
-					if rCount, err := clans.CountDocuments(ctx,
-						bson.M{"members": from}); err != nil {
-						replyToMsg(messID, errStart+"clan: new: count_members", peer, bot)
-						errl.Println("e: ", err)
-						return
-					} else if rCount != 0 {
-						replyToMsg(messID,
-							"Ошибка: вы уже состоите в клане. Напишите `клан выйти`, чтобы выйти из него",
-							peer, bot,
-						)
-						return
-					}
-					womb.Money -= 25000
-					err = docUpd(womb, wFil, users)
-					if err != nil {
-						replyToMsg(messID, errStart+"clan: new: update_money", peer, bot)
-						errl.Println("e: ", err)
-						return
-					}
-					nclan := Clan{
-						Tag:     strings.ToUpper(tag),
-						Name:    name,
-						Money:   100,
-						Leader:  from,
-						Banker:  from,
-						Members: []int64{from},
-						Banned:  []int64{},
-						Settings: ClanSettings{
-							AviableToJoin: true,
-						},
-					}
-					_, err := clans.InsertOne(ctx, &nclan)
-					if err != nil {
-						replyToMsg(messID, errStart+"clan: new: insert", peer, bot)
-						errl.Println("e: ", err)
-						return
-					}
-					if hasTitle(5, womb.Titles) {
-						newTitles := []uint16{}
-						for _, id := range womb.Titles {
-							if id == 5 {
-								continue
-							}
-							newTitles = append(newTitles, id)
-						}
-						womb.Titles = newTitles
-						err = docUpd(womb, wFil, users)
-						if err != nil {
-							replyToMsg(messID, errStart+"clan: transfer: delete_title", peer, bot)
-							errl.Println("e: ", err)
-							return
-						}
-					}
-					replyToMsg(messID,
-						fmt.Sprintf("Клан `%s` успешно создан! У вас взяли 25'000 шишей", name),
-						peer, bot,
-					)
 				case "назначить":
 					if len(args) == 2 {
 						replyToMsg(messID, "конечно", peer, bot)
@@ -4638,6 +4553,9 @@ func main() {
 					}
 					replyToMsg(messID, rep, peer, bot)
 					sendMsg(msgtol, uClan.Leader, bot)
+					if peer != uClan.GroupID {
+						sendMsg("Вомбат "+womb.Name+" вышел из клана.", uClan.GroupID, bot)
+					}
 				case "статус":
 					if len(args) > 3 {
 						replyToMsg(messID,
