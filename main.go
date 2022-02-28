@@ -127,6 +127,22 @@ func init() {
 	}
 }
 
+// SortedMembers returns sorted list of members
+func (cl Clan) SortedMembers() []int64 {
+	var membs = make([]int64, len(cl.Members))
+	membs = cl.Members
+	for i, id := range membs {
+		if id == cl.Leader {
+			membs[i], membs[0] = membs[0], cl.Leader
+		} else if id == cl.Banker {
+			if len(membs) > 1 {
+				membs[i], membs[1] = membs[1], cl.Banker
+			}
+		}
+	}
+	return membs
+}
+
 // checkerr реализует проверку ошибок без паники
 func checkerr(err error) {
 	if err != nil && err.Error() != "EOF" {
@@ -1532,10 +1548,7 @@ func main() {
 							lost                uint8 = 0
 						)
 						var tWomb User
-						for i, id := range append([]int64{sClan.Leader, sClan.Banker}, sClan.Members...) { // append для порядка
-							if (id == sClan.Leader && i != 0) || (id == sClan.Banker && (i != 1 && i != 0)) {
-								continue
-							}
+						for i, id := range sClan.SortedMembers() { // append для порядка
 							if rCount, err := users.CountDocuments(ctx,
 								bson.M{"_id": id}); err != nil {
 								replyToMsg(messID, errStart+"clan: status: count_user", peer, bot)
@@ -4640,10 +4653,7 @@ func main() {
 						lost                uint8 = 0
 					)
 					var tWomb User
-					for i, id := range append([]int64{sClan.Leader, sClan.Banker}, sClan.Members...) { // append для порядка
-						if (id == sClan.Leader && i != 0) || (id == sClan.Banker && (i != 1 && i != 0)) {
-							continue
-						}
+					for i, id := range sClan.SortedMembers() {
 						if rCount, err := users.CountDocuments(ctx,
 							bson.M{"_id": id}); err != nil {
 							replyToMsg(messID, errStart+"clan: status: count_user", peer, bot)
