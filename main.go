@@ -624,7 +624,25 @@ func main() {
 						tWomb User
 					)
 					if strID == "" {
-						if isInUsers {
+						if update.Message.ReplyToMessage != nil {
+							tWomb.ID = update.Message.ReplyToMessage.From.ID
+							if c, err := users.CountDocuments(ctx, bson.M{"_id": tWomb.ID}); err != nil {
+								replyToMsg(messID, errStart+"about_womb: reply: count", peer, bot)
+								errl.Println("e: ", err)
+								return
+							} else if c == 0 {
+								replyToMsg(messID,
+									"Данный пользователь не обладает вомбатом. (напищите свой ник, если хотите узнать о себе и с ответом)",
+									peer, bot,
+								)
+								return
+							}
+							if err := users.FindOne(ctx, bson.M{"_id": tWomb.ID}).Decode(&tWomb); err != nil {
+								replyToMsg(messID, errStart+"about_womb: reply: find", peer, bot)
+								errl.Println("e: ", err)
+								return
+							}
+						} else if isInUsers {
 							tWomb = womb
 						} else {
 							replyToMsg(messID, "У вас нет вомбата", peer, bot)
