@@ -686,6 +686,20 @@ func main() {
 						replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с именем %s не найдено", strID), peer, bot)
 						return
 					}
+					var clname string
+					if c, err := clans.CountDocuments(ctx, bson.M{"members": tWomb.ID}); err != nil {
+						replyToMsg(messID, errStart+"count_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					} else if c != 0 {
+						var uClan Clan
+						if err := clans.FindOne(ctx, bson.M{"members": tWomb.ID}).Decode(&uClan); err != nil {
+							replyToMsg(messID, errStart+"find_clan", peer, bot)
+							errl.Println("e: ", err)
+							return
+						}
+						clname = "[" + uClan.Tag + "]"
+					}
 					strTitles := ""
 					tCount := len(tWomb.Titles)
 					if tCount != 0 {
@@ -726,8 +740,8 @@ func main() {
 						return
 					}
 					replyWithPhotoMD(messID, randImg(abimg), fmt.Sprintf(
-						"Вомбат `%s`\nТитулы: %s\n 👁 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
-						tWomb.Name, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money, sl),
+						"Вомбат `%s` %s\nТитулы: %s\n 👁 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
+						tWomb.Name, clname, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money, sl),
 						peer, bot,
 					)
 				} else if strings.HasPrefix(strings.ToLower(txt), "хрю") {
@@ -3184,6 +3198,20 @@ func main() {
 					replyToMsg(messID, fmt.Sprintf("Ошибка: пользователя с именем %s не найдено", strID), peer, bot)
 					return
 				}
+				var clname string
+				if c, err := clans.CountDocuments(ctx, bson.M{"members": tWomb.ID}); err != nil {
+					replyToMsg(messID, errStart+"count_clan", peer, bot)
+					errl.Println("e: ", err)
+					return
+				} else if c != 0 {
+					var uClan Clan
+					if err := clans.FindOne(ctx, bson.M{"members": tWomb.ID}).Decode(&uClan); err != nil {
+						replyToMsg(messID, errStart+"find_clan", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					clname = "[" + uClan.Tag + "]"
+				}
 				strTitles := ""
 				tCount := len(tWomb.Titles)
 				if tCount != 0 {
@@ -3222,8 +3250,8 @@ func main() {
 					return
 				}
 				replyWithPhotoMD(messID, randImg(abimg), fmt.Sprintf(
-					"Вомбат `%s`\nТитулы: %s\n 🕳 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
-					tWomb.Name, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money, sl),
+					"Вомбат `%s` %s\nТитулы: %s\n 🕳 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
+					tWomb.Name, clname, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money, sl),
 					peer, bot,
 				)
 			} else if strings.HasPrefix(strings.ToLower(txt), "о вомботе") {
