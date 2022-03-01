@@ -698,7 +698,7 @@ func main() {
 							errl.Println("e: ", err)
 							return
 						}
-						clname = "[" + uClan.Tag + "]"
+						clname = "\\[" + uClan.Tag + "]"
 					}
 					strTitles := ""
 					tCount := len(tWomb.Titles)
@@ -3210,7 +3210,7 @@ func main() {
 						errl.Println("e: ", err)
 						return
 					}
-					clname = "[" + uClan.Tag + "]"
+					clname = "\\[" + uClan.Tag + "]"
 				}
 				strTitles := ""
 				tCount := len(tWomb.Titles)
