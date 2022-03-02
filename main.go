@@ -793,32 +793,43 @@ func main() {
 							return
 						}
 						r := update.Message.ReplyToMessage
-						sendMsg(fmt.Sprintf(
-							"%d %d \nписьмо из группы (%d @%s) от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s)",
-							messID, peer, peer, update.Message.Chat.UserName,
-							from, update.Message.From.UserName,
-							isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName),
+						sendMsg(
+							fmt.Sprintf(
+								"%d %d \nписьмо из группы (%d @%s) от %d (@%s isInUsers: %v) (mt: %s bt: %s), отвечающее на: \n%s\n(id:%d fr:%d @%s) (mt:%s, bt: %s)",
+								messID, peer, peer, update.Message.Chat.UserName,
+								from, update.Message.From.UserName, isInUsers,
+								time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+								r.Text, r.MessageID, r.From.ID, r.From.UserName,
+								time.Unix(int64(r.Date), 0).String(), time.Now().String(),
+							),
 							conf.SupChatID, bot,
 						)
 						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
 					} else {
 						if update.Message.ReplyToMessage == nil {
 							msg := strings.Join(oArgs[1:], " ")
-							sendMsg(fmt.Sprintf(
-								"%d %d \nписьмо из группы %d (@%s) от %d (@%s isInUsers: %v): \n%s",
-								messID, peer, peer, update.Message.Chat.UserName, from,
-								update.Message.From.UserName, isInUsers, msg),
+							sendMsg(
+								fmt.Sprintf(
+									"%d %d \nписьмо из группы %d (@%s) от %d (@%s isInUsers: %v): \n%s\n(mt: %s bt:%s)",
+									messID, peer, peer, update.Message.Chat.UserName, from,
+									update.Message.From.UserName, isInUsers, msg,
+									time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+								),
 								conf.SupChatID, bot,
 							)
 							replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
 						} else {
 							r := update.Message.ReplyToMessage
-							sendMsg(fmt.Sprintf(
-								"%d %d \nписьмо из группы (%d @%s) от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) с текстом:\n%s",
-								messID, peer, peer, update.Message.Chat.UserName,
-								from, update.Message.From.UserName,
-								isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
-								txt), conf.SupChatID, bot,
+							sendMsg(
+								fmt.Sprintf(
+									"%d %d \nписьмо из группы (%d @%s) от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) (mt: %s bt: %s) с текстом:\n%s\n(mt: %s bt: %s)",
+									messID, peer, peer, update.Message.Chat.UserName,
+									from, update.Message.From.UserName,
+									isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
+									time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+									txt,
+									time.Unix(int64(r.Date), 0).String(), time.Now().String(),
+								), conf.SupChatID, bot,
 							)
 							replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
 						}
@@ -3398,30 +3409,40 @@ func main() {
 						return
 					}
 					r := update.Message.ReplyToMessage
-					sendMsg(fmt.Sprintf(
-						"%d %d \nписьмо от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s)",
-						messID, peer, from, update.Message.From.UserName,
-						isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName),
+					sendMsg(
+						fmt.Sprintf(
+							"%d %d \nписьмо от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) (mt: %s bt:%s)",
+							messID, peer, from, update.Message.From.UserName,
+							isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
+							time.Unix(int64(r.Date), 0).String(), time.Now().String(),
+						),
 						conf.SupChatID, bot,
 					)
 					replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
 				} else {
 					if update.Message.ReplyToMessage == nil {
 						msg := strings.Join(oArgs[1:], " ")
-						sendMsg(fmt.Sprintf(
-							"%d %d \nписьмо %d (@%s) от %d (@%s isInUsers: %v): \n%s",
-							messID, peer, peer, update.Message.Chat.UserName, from,
-							update.Message.From.UserName, isInUsers, msg),
+						sendMsg(
+							fmt.Sprintf(
+								"%d %d \nписьмо %d (@%s) от %d (@%s isInUsers: %v): \n%s\n(mt: %s bt: %s)",
+								messID, peer, peer, update.Message.Chat.UserName, from,
+								update.Message.From.UserName, isInUsers, msg,
+								time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+							),
 							conf.SupChatID, bot,
 						)
 						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
 					} else {
 						r := update.Message.ReplyToMessage
-						sendMsg(fmt.Sprintf(
-							"%d %d \nписьмо от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) с текстом:\n%s",
-							messID, peer, from, update.Message.From.UserName,
-							isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
-							txt), conf.SupChatID, bot,
+						sendMsg(
+							fmt.Sprintf(
+								"%d %d \nписьмо от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) (mt: %s bt: %s) с текстом:\n%s\n(mt: %s bt:%s)",
+								messID, peer, from, update.Message.From.UserName,
+								isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
+								time.Unix(int64(r.Date), 0).String(), time.Now().String(),
+								txt,
+								time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+							), conf.SupChatID, bot,
 						)
 						replyToMsg(messID, "Письмо отправлено! Скоро (или нет) придёт ответ", peer, bot)
 					}
