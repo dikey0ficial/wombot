@@ -4111,8 +4111,18 @@ func main() {
 				msg = strings.TrimSuffix(msg, "\n")
 				sendMsg(msg, peer, bot)
 			} else if strings.HasPrefix(txt, "sendimg") {
-				id := strings.TrimSpace(strings.TrimPrefix(txt, "sendimg"))
-				sendPhoto(id, "", peer, bot)
+				args := strings.Fields(txt)
+				var uid int64 = from
+				if len(args) < 2 {
+					return
+				}
+				fid := strings.TrimSpace(args[1])
+				if len(args) == 3 {
+					if i, err := strconv.ParseInt(args[2], 10, 64); err == nil {
+						uid = i
+					}
+				}
+				sendPhoto(fid, "", uid, bot)
 			} else if strings.HasPrefix(strings.ToLower(txt), "вомбанк") {
 				args := strings.Fields(strings.ToLower(txt))
 				if len(args) == 0 {
