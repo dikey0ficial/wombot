@@ -5055,6 +5055,83 @@ func main() {
 						msg += " — " + bWomb.Name + "\n"
 					}
 					replyToMsg(messID, msg, peer, bot)
+				case "топ":
+					fallthrough
+				case "рейтинг":
+					var (
+						name  string = "xp"
+						queue int8   = -1
+					)
+					if len(args) >= 3 && len(args) < 6 {
+						if isInList(args[2], []string{"шиши", "деньги", "money"}) {
+							name = "money"
+						} else if isInList(args[2], []string{"хп", "опыт", "xp", "хрю"}) {
+							name = "xp"
+						} else {
+							replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[1]), peer, bot)
+							return
+						}
+						if len(args) == 5 {
+							if isInList(args[4], []string{"+", "плюс", "++", "увеличение"}) {
+								queue = 1
+							} else if isInList(args[4], []string{"-", "минус", "--", "уменьшение"}) {
+								queue = -1
+							} else {
+								replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
+								return
+							}
+						}
+					} else if len(args) != 2 {
+						replyToMsg(messID, "Слишком много аргументов", peer, bot)
+						return
+					}
+					opts := options.Find()
+					opts.SetSort(bson.M{name: queue})
+					opts.SetLimit(10)
+					cur, err := clans.Find(ctx, bson.M{}, opts)
+					if err != nil {
+						replyToMsg(messID, errStart+"rating: find", peer, bot)
+						errl.Println("e: ", err)
+						return
+					}
+					var rating []Clan
+					for cur.Next(ctx) {
+						var cl Clan
+						cur.Decode(&cl)
+						rating = append(rating, cl)
+					}
+					var msg string = "Топ-10 кланов по "
+					switch name {
+					case "money":
+						msg += "шишам в казне "
+					case "xp":
+						msg += "XP "
+					default:
+						replyToMsg(messID, errStart+"rating: name else", peer, bot)
+						errl.Println("name else")
+						return
+					}
+					msg += "в порядке "
+					if queue == 1 {
+						msg += "увеличения:"
+					} else if queue == -1 {
+						msg += "уменьшения:"
+					} else {
+						replyToMsg(messID, errStart+"queue else", peer, bot)
+						errl.Println("err: rating: queue else")
+						return
+					}
+					msg += "\n"
+					for num, cl := range rating {
+						switch name {
+						case "money":
+							msg += fmt.Sprintf("%d | [%s] `%s` | %d шишей в казне\n", num+1, cl.Tag, cl.Name, cl.Money)
+						case "xp":
+							msg += fmt.Sprintf("%d | [%s] `%s` | %d XP\n", num+1, cl.Tag, cl.Name, cl.XP)
+						}
+					}
+					msg = strings.TrimSuffix(msg, "\n")
+					replyToMsg(messID, msg, peer, bot)
 				default:
 					replyToMsg(messID,
 						fmt.Sprintf(
