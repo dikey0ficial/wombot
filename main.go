@@ -2677,22 +2677,22 @@ func main() {
 							name  string = "xp"
 							queue int8   = -1
 						)
-						if len(args) >= 3 && len(args) < 6 {
+						if len(args) >= 3 && len(args) < 5 {
 							if isInList(args[2], []string{"шиши", "деньги", "money"}) {
 								name = "money"
 							} else if isInList(args[2], []string{"хп", "опыт", "xp", "хрю"}) {
 								name = "xp"
 							} else {
-								replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[1]), peer, bot)
+								replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
 								return
 							}
-							if len(args) == 5 {
-								if isInList(args[4], []string{"+", "плюс", "++", "увеличение"}) {
+							if len(args) == 4 {
+								if isInList(args[3], []string{"+", "плюс", "++", "увеличение"}) {
 									queue = 1
-								} else if isInList(args[4], []string{"-", "минус", "--", "уменьшение"}) {
+								} else if isInList(args[3], []string{"-", "минус", "--", "уменьшение"}) {
 									queue = -1
 								} else {
-									replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
+									replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[3]), peer, bot)
 									return
 								}
 							}
@@ -5062,22 +5062,22 @@ func main() {
 						name  string = "xp"
 						queue int8   = -1
 					)
-					if len(args) >= 3 && len(args) < 6 {
+					if len(args) >= 3 && len(args) < 5 {
 						if isInList(args[2], []string{"шиши", "деньги", "money"}) {
 							name = "money"
 						} else if isInList(args[2], []string{"хп", "опыт", "xp", "хрю"}) {
 							name = "xp"
 						} else {
-							replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[1]), peer, bot)
+							replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
 							return
 						}
-						if len(args) == 5 {
-							if isInList(args[4], []string{"+", "плюс", "++", "увеличение"}) {
+						if len(args) == 4 {
+							if isInList(args[3], []string{"+", "плюс", "++", "увеличение"}) {
 								queue = 1
-							} else if isInList(args[4], []string{"-", "минус", "--", "уменьшение"}) {
+							} else if isInList(args[3], []string{"-", "минус", "--", "уменьшение"}) {
 								queue = -1
 							} else {
-								replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[2]), peer, bot)
+								replyToMsg(messID, fmt.Sprintf("не понимаю, что значит %s", args[3]), peer, bot)
 								return
 							}
 						}
