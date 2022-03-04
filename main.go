@@ -1615,6 +1615,7 @@ func main() {
 					case "атака":
 						if len(args) == 2 {
 							replyToMsg(messID, "атака", peer, bot)
+							return
 						}
 						switch strings.ToLower(args[2]) {
 						case "атака":
