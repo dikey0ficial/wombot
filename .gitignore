@@ -1,7 +1,5 @@
-/*.json
-/config.toml
-/vendor/
-/wombot.exe
-/wombot
-/*.log
-/notes.txt
+*.exe
+built/
+BACKUP/
+*.json
+config.toml

@@ -1,4 +1,4 @@
-module wombot
+module github.com/dikey0ficial/wombot
 
 go 1.17
 
