@@ -3,3 +3,5 @@ built/
 BACKUP/
 *.json
 config.toml
+vendor/
+notes.txt
