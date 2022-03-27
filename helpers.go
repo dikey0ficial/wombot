@@ -79,7 +79,6 @@ func docUpd(v interface{}, filter bson.M, col *mongo.Collection) error {
 func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
 	mess, err := bot.Send(msg)
-	checkerr(err)
 	if err != nil {
 		debl.Println(chatID)
 	}
@@ -89,9 +88,9 @@ func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
 // sendMsgMD отправляет сообщение с markdown
 func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewMessage(chatID, message)
-	mess, err := bot.Send(msg)
 	msg.ParseMode = "markdown"
-	checkerr(err)
+	mess, err := bot.Send(msg)
+
 	if err != nil {
 		debl.Println(chatID)
 	}
@@ -99,29 +98,27 @@ func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) int {
 }
 
 // replyToMsg отвечает обычным сообщением
-func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
+func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
 	mess, err := bot.Send(msg)
-	checkerr(err)
 	if err != nil {
-		debl.Println(chatID)
+		return 0, err
 	}
-	return mess.MessageID
+	return mess.MessageID, nil
 }
 
 // replyToMsgMDNL отвечает сообщением с markdown без ссылок
-func replyToMsgMDNL(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
+func replyToMsgMDNL(replyID int, message string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
 	msg.ParseMode = "markdown"
 	msg.DisableWebPagePreview = true
 	mess, err := bot.Send(msg)
-	checkerr(err)
 	if err != nil {
-		debl.Println(chatID)
+		return 0, err
 	}
-	return mess.MessageID
+	return mess.MessageID, nil
 }
 
 // sendPhoto отправляет текст с картинкой
@@ -129,7 +126,7 @@ func sendPhoto(id, caption string, chatID int64, bot *tg.BotAPI) int {
 	msg := tg.NewPhoto(chatID, tg.FileID(id))
 	msg.Caption = caption
 	mess, err := bot.Send(msg)
-	checkerr(err)
+
 	if err != nil {
 		debl.Println(chatID)
 	}
@@ -142,7 +139,7 @@ func sendPhotoMD(id, caption string, chatID int64, bot *tg.BotAPI) int {
 	msg.Caption = caption
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
-	checkerr(err)
+
 	if err != nil {
 		debl.Println(chatID)
 	}
@@ -150,30 +147,30 @@ func sendPhotoMD(id, caption string, chatID int64, bot *tg.BotAPI) int {
 }
 
 // replyToMsgMD отвечает сообщением с markdown
-func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) int {
+func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
-	checkerr(err)
+
 	if err != nil {
-		debl.Println(chatID)
+		return 0, err
 	}
-	return mess.MessageID
+	return mess.MessageID, nil
 }
 
 // replyWithPhotoMD отвечает картинкой с текстом с markdown
-func replyWithPhotoMD(replyID int, id, caption string, chatID int64, bot *tg.BotAPI) int {
+func replyWithPhotoMD(replyID int, id, caption string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewPhoto(chatID, tg.FileID(id))
 	msg.Caption = caption
 	msg.ReplyToMessageID = replyID
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
-	checkerr(err)
+
 	if err != nil {
-		debl.Println(chatID)
+		return 0, err
 	}
-	return mess.MessageID
+	return mess.MessageID, nil
 }
 
 // replyWithPhotoMD отвечает картинкой с текстом
@@ -182,7 +179,7 @@ func replyWithPhoto(replyID int, id, caption string, chatID int64, bot *tg.BotAP
 	msg.Caption = caption
 	msg.ReplyToMessageID = replyID
 	mess, err := bot.Send(msg)
-	checkerr(err)
+
 	if err != nil {
 		debl.Println(chatID)
 	}
@@ -195,13 +192,13 @@ func isInAttacks(id int64, attacks *mongo.Collection) (isIn, isFrom bool) {
 	if f, err := attacks.CountDocuments(ctx, bson.M{"from": id}); f > 0 && err == nil {
 		isFrom = true
 	} else if err != nil {
-		checkerr(err)
+
 	}
 	var isTo bool
 	if t, err := attacks.CountDocuments(ctx, bson.M{"to": id}); t > 0 && err == nil {
 		isTo = true
 	} else if err != nil {
-		checkerr(err)
+
 	}
 	isIn = isFrom || isTo
 	return isIn, isFrom
@@ -213,13 +210,13 @@ func isInClattacks(id string, attacks *mongo.Collection) (isIn, isFrom bool) {
 	if f, err := attacks.CountDocuments(ctx, bson.M{"from": id}); f > 0 && err == nil {
 		isFrom = true
 	} else if err != nil {
-		checkerr(err)
+
 	}
 	var isTo bool
 	if t, err := attacks.CountDocuments(ctx, bson.M{"to": id}); t > 0 && err == nil {
 		isTo = true
 	} else if err != nil {
-		checkerr(err)
+
 	}
 	isIn = isFrom || isTo
 	return isIn, isFrom
@@ -264,16 +261,16 @@ func getAttackByWomb(id int64, isFrom bool, attacks *mongo.Collection) (at Attac
 }
 
 // delMsg удаляет сообщение
-func delMsg(ID int, chatID int64, bot *tg.BotAPI) {
+func delMsg(ID int, chatID int64, bot *tg.BotAPI) error {
 	delConfig := tg.DeleteMessageConfig{
 		ChatID:    chatID,
 		MessageID: ID,
 	}
 	_, err := bot.Request(delConfig)
-	checkerr(err)
+	return err
 }
 
-func editMsg(mid int, txt string, chatID int64, bot *tg.BotAPI) {
+func editMsg(mid int, txt string, chatID int64, bot *tg.BotAPI) error {
 	editConfig := tg.EditMessageTextConfig{
 		BaseEdit: tg.BaseEdit{
 			ChatID:    chatID,
@@ -282,7 +279,7 @@ func editMsg(mid int, txt string, chatID int64, bot *tg.BotAPI) {
 		Text: txt,
 	}
 	_, err := bot.Request(editConfig)
-	checkerr(err)
+	return err
 }
 
 var errNoImgs = fmt.Errorf("getImgs: no groups with this name")
@@ -358,4 +355,30 @@ func isValidTag(tag string) bool {
 		}
 	}
 	return true
+}
+
+func isGroup(m *tg.Message) bool {
+	if m == nil || m.Chat == nil {
+		return false
+	}
+	return m.Chat.IsGroup() || m.Chat.IsSuperGroup()
+}
+
+func getIsInUsers(id int64) (bool, error) {
+	rCount, err := users.CountDocuments(ctx, bson.M{"_id": id})
+	if err != nil {
+		return false, err
+	}
+	return rCount != 0, nil
+}
+
+func wombFiter(womb User) bson.M {
+	return bson.M{"_id": womb.ID}
+}
+
+func randomString(arr ...string) string {
+	if len(arr) == 0 {
+		return ""
+	}
+	return arr[random.Intn(len(arr))]
 }

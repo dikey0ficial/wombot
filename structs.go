@@ -40,6 +40,7 @@ type Banked struct {
 	ID    int64  `bson:"_id"`
 	Money uint64 `bson:"money"`
 }
+
 // ClanSettings реализует настройки клана
 type ClanSettings struct {
 	AviableToJoin bool `bson:"aviable_to_join"`

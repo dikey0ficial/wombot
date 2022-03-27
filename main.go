@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
 	"io/ioutil"
 	"log"
 	"math"
@@ -27,6 +28,13 @@ var (
 		MongoURL  string `toml:"mongo_url" env:"MONGOURL"`
 		SupChatID int64  `toml:"support_chat_id" env:"SUPCHATID"`
 	}{}
+	bot *tg.BotAPI
+
+	mongoClient                            *mongo.Client
+	db                                     *mongo.Database
+	users, attacks, bank, clans, clattacks *mongo.Collection
+	titlesC, imgsC                         *mongo.Collection
+	titles                                 []Title
 )
 
 func init() {
@@ -52,43 +60,48 @@ func init() {
 		errl.Println(err)
 		os.Exit(1)
 	}
+	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
+	if err != nil {
+		errl.Println(err)
+		os.Exit(1)
+	}
+	err = mongoClient.Connect(ctx)
+	if err != nil {
+		errl.Println(err)
+		os.Exit(1)
+	}
+	db = mongoClient.Database("wombot")
+
+	users = db.Collection("users")
+
+	attacks = db.Collection("attacks")
+
+	bank = db.Collection("bank")
+
+	clans = db.Collection("clans")
+	clattacks = db.Collection("clattacks")
+
+	titlesC = db.Collection("titles")
+	cur, err := titlesC.Find(ctx, bson.M{})
+	if err != nil {
+		errl.Println(err)
+		os.Exit(1)
+	}
+	defer cur.Close(ctx)
+	for cur.Next(ctx) {
+		var nextOne Title
+		err := cur.Decode(&nextOne)
+		if err != nil {
+			errl.Printf("Lost title because error: %v\n", err)
+			continue
+		}
+		titles = append(titles, nextOne)
+	}
+	imgsC = db.Collection("imgs")
 }
 
 func main() {
 	// init
-	mongoClient, err := mongo.NewClient(options.Client().ApplyURI(conf.MongoURL))
-	checkerr(err)
-	err = mongoClient.Connect(ctx)
-	checkerr(err)
-	defer mongoClient.Disconnect(ctx)
-
-	db := mongoClient.Database("wombot")
-
-	users := db.Collection("users")
-
-	attacks := db.Collection("attacks")
-
-	bank := db.Collection("bank")
-
-	clans := db.Collection("clans")
-	clattacks := db.Collection("clattacks")
-
-	var titles []Title
-
-	titlesC := db.Collection("titles")
-	cur, err := titlesC.Find(ctx, bson.M{})
-	defer cur.Close(ctx)
-	checkerr(err)
-	for cur.Next(ctx) {
-		var nextOne Title
-		err := cur.Decode(&nextOne)
-		checkerr(err)
-		titles = append(titles, nextOne)
-	}
-	cur.Close(ctx)
-
-	imgsC := db.Collection("imgs")
-
 	bot, err := tg.NewBotAPI(conf.Token)
 	checkerr(err)
 
@@ -104,6 +117,7 @@ func main() {
 		} else if update.Message.Photo != nil {
 			infl.Println("img:", (update.Message.Photo)[0].FileID, "from:", update.Message.From.UserName, update.Message.From.ID)
 		}
+		// args := strings.Fields(update.Message.Text)
 		if update.Message.Chat.ID == conf.SupChatID {
 			// MESSAGE_ADMIN_CHAT
 			go func(update tg.Update, bot *tg.BotAPI) {
@@ -1473,8 +1487,8 @@ func main() {
 							im := randImg(atimgs)
 							ph1 := replyWithPhoto(messID, im, "", peer, bot)
 							ph2 := sendPhoto(im, "", frClan.Leader, bot)
-							war1 := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
-							war2 := replyToMsg(ph2, fmt.Sprintf(
+							war1, _ := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
+							war2, _ := replyToMsg(ph2, fmt.Sprintf(
 								"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
 								womb.Name), frClan.Leader, bot,
 							)
@@ -3406,8 +3420,8 @@ func main() {
 					im := randImg(atimgs)
 					ph1 := sendPhoto(im, "", peer, bot)
 					ph2 := sendPhoto(im, "", tWomb.ID, bot)
-					war1 := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
-					war2 := replyToMsg(ph2, fmt.Sprintf(
+					war1, _ := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
+					war2, _ := replyToMsg(ph2, fmt.Sprintf(
 						"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
 						womb.Name), tWomb.ID, bot,
 					)
