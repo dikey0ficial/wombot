@@ -328,7 +328,7 @@ func main() {
 						errl.Println("e: ", err)
 						return
 					}
-					mID := replyWithPhoto(messID, randImg(hru), "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
+					mID, _ := replyWithPhoto(messID, randImg(hru), "АХТУНГ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ШВАЙНЕ ААААААА", peer, bot)
 					time.Sleep(15 * time.Second)
 					delMsg(mID, peer, bot)
 				} else if isInList(txt, []string{"помощь", "команды", "/help@wombatobot"}) {
@@ -1485,7 +1485,7 @@ func main() {
 								return
 							}
 							im := randImg(atimgs)
-							ph1 := replyWithPhoto(messID, im, "", peer, bot)
+							ph1, _ := replyWithPhoto(messID, im, "", peer, bot)
 							ph2 := sendPhoto(im, "", frClan.Leader, bot)
 							war1, _ := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
 							war2, _ := replyToMsg(ph2, fmt.Sprintf(
@@ -2465,7 +2465,7 @@ func main() {
 					}
 					replyToMsg(messID, "Выдан титул \"Вомботестер\" (ID: 0)", peer, bot)
 				}
-			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз", "убить"}) {
+			} else if isInList(txt, []string{"приготовить шашлык", "продать вомбата арабам", "слить вомбата в унитаз", "расстрелять вомбата"}) {
 				if isInUsers {
 					if !(hasTitle(1, womb.Titles)) {
 						_, err = users.DeleteOne(ctx, wFil)

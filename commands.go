@@ -4,7 +4,9 @@ import (
 	"fmt"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.mongodb.org/mongo-driver/bson"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type command struct {
@@ -215,6 +217,217 @@ var commands = []command{
 			} else {
 				_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Добро пожаловать, вомбат `%s`!", womb.Name), update.Message.Chat.ID, bot)
 			}
+			return err
+		},
+	},
+	{
+		Name: "support",
+		Is: func(args []string, update tg.Update) bool {
+			txt := strings.ToLower(strings.Join(args, " "))
+			if isPrefixInList(txt, []string{"одмен!", "/admin@" + bot.Self.UserName, "/support@" + bot.Self.UserName, "/bug@" + bot.Self.UserName}) {
+				return true
+			} else if !isGroup(update.Message) && isPrefixInList(txt, []string{"/admin", "/support", "/bug", "/админ", "/сап", "/саппорт", "/баг"}) {
+				return true
+			}
+			return false
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var (
+				isGr           = "из чата "
+				isInUsers, err = getIsInUsers(update.Message.From.ID)
+				txt            = strings.ToLower(strings.Join(args, " "))
+			)
+			if err != nil {
+				return err
+			}
+			if isGroup(update.Message) {
+				isGr = "из группы "
+			}
+			if len(args) < 2 {
+				if update.Message.ReplyToMessage == nil {
+					replyToMsg(update.Message.MessageID, "Ты чаво... где письмо??", update.Message.Chat.ID, bot)
+					return nil
+				}
+				r := update.Message.ReplyToMessage
+				_, serr := sendMsg(
+					fmt.Sprintf(
+						"%d %d \nписьмо %s(%d @%s) от %d (@%s isInUsers: %v) (mt: %s bt: %s), отвечающее на: \n%s\n(id:%d fr:%d @%s) (mt:%s, bt: %s)",
+						update.Message.MessageID, update.Message.Chat.ID, isGr, update.Message.Chat.ID, update.Message.Chat.UserName,
+						update.Message.From.ID, update.Message.From.UserName, isInUsers,
+						time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+						r.Text, r.MessageID, r.From.ID, r.From.UserName,
+						time.Unix(int64(r.Date), 0).String(), time.Now().String(),
+					),
+					conf.SupChatID, bot,
+				)
+				_, err = replyToMsg(update.Message.MessageID, "Письмо отправлено! Скоро (или нет) придёт ответ", update.Message.Chat.ID, bot)
+				if err != nil {
+					if serr != nil {
+						return fmt.Errorf("Two errors: %v and %v", serr, err)
+					}
+					return err
+				}
+			} else {
+				if update.Message.ReplyToMessage == nil {
+					msg := strings.Join(args[1:], " ")
+					_, serr := sendMsg(
+						fmt.Sprintf(
+							"%d %d \nписьмо %s%d (@%s) от %d (@%s isInUsers: %v): \n%s\n(mt: %s bt:%s)",
+							update.Message.MessageID, update.Message.Chat.ID, isGr, update.Message.Chat.ID, update.Message.Chat.UserName, update.Message.From.ID,
+							update.Message.From.UserName, isInUsers, msg,
+							time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+						),
+						conf.SupChatID, bot,
+					)
+					_, err := replyToMsg(update.Message.MessageID, "Письмо отправлено! Скоро (или нет) придёт ответ", update.Message.Chat.ID, bot)
+					if err != nil {
+						if serr != nil {
+							return fmt.Errorf("Two errors: %v and %v", serr, err)
+						}
+						return err
+					}
+				} else {
+					r := update.Message.ReplyToMessage
+					_, serr := sendMsg(
+						fmt.Sprintf(
+							"%d %d \nписьмо %s(%d @%s) от %d (@%s isInUsers: %v), отвечающее на: \n%s\n(id:%d fr:%d @%s) (mt: %s bt: %s) с текстом:\n%s\n(mt: %s bt: %s)",
+							update.Message.MessageID, update.Message.Chat.ID, isGr, update.Message.Chat.ID, update.Message.Chat.UserName,
+							update.Message.From.ID, update.Message.From.UserName,
+							isInUsers, r.Text, r.MessageID, r.From.ID, r.From.UserName,
+							time.Unix(int64(update.Message.Date), 0).String(), time.Now().String(),
+							txt,
+							time.Unix(int64(r.Date), 0).String(), time.Now().String(),
+						), conf.SupChatID, bot,
+					)
+					_, err := replyToMsg(update.Message.MessageID, "Письмо отправлено! Скоро (или нет) придёт ответ", update.Message.Chat.ID, bot)
+					if err != nil {
+						if serr != nil {
+							return fmt.Errorf("Two errors: %v and %v", serr, err)
+						}
+						return err
+					}
+				}
+			}
+			return nil
+		},
+	},
+	{
+		Name: "take_wombat",
+		Is: func(args []string, update tg.Update) bool {
+			if isInList(strings.ToLower(strings.Join(args, " ")),
+				[]string{"взять вомбата", "купить вомбата у арабов", "хочу вомбата"},
+			) {
+				return true
+			}
+			return false
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if isGroup(update.Message) {
+				_, err := replyToMsg(update.Message.MessageID, "данная команда работает (мб только пока) только в лс)", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if isInUsers {
+				_, err := replyToMsg(update.Message.MessageID,
+					"У тебя как бы уже есть вомбат лолкек. Если хочешь от него избавиться, то напиши `приготовить шашлык`",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			newWomb := User{
+				ID:     update.Message.From.ID,
+				Name:   "Вомбат_" + strconv.Itoa(int(update.Message.From.ID)),
+				XP:     0,
+				Health: 5,
+				Force:  2,
+				Money:  10,
+				Titles: []uint16{},
+				Sleep:  false,
+			}
+			_, err = users.InsertOne(ctx, &newWomb)
+			if err != nil {
+				return err
+			}
+			newimg, err := getImgs(imgsC, "new")
+			if err != nil {
+				return err
+			}
+			_, err = replyWithPhoto(update.Message.MessageID,
+				randImg(newimg), fmt.Sprintf(
+					"Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты",
+					newWomb.Name),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "schweine",
+		Is: func(args []string, update tg.Update) bool {
+			if strings.HasPrefix(strings.ToLower(args[0]), "хрю") {
+				return true
+			}
+			return false
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			schweineImgs, err := getImgs(imgsC, "schweine")
+			if err != nil {
+				return err
+			}
+			_, err = replyWithPhoto(update.Message.MessageID,
+				randImg(schweineImgs),
+				"АХТУНГ ШВАЙНЕ УИИИИИИИИИИИИИИИИИИИИИИИИИ",
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "delete_wombat",
+		Is: func(args []string, update tg.Update) bool {
+			return isInList(
+				strings.ToLower(strings.Join(args, " ")),
+				[]string{
+					"приготовить шашлык", "продать вомбата арабам",
+					"слить вомбата в унитаз", "расстрелять вомбата",
+				},
+			)
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if isGroup(update.Message) {
+				_, err := replyToMsg(update.Message.MessageID, "данная команда работает (мб только пока) только в лс)", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err := replyToMsg(update.Message.MessageID, "Но у вас нет вомбата...", update.Message.Chat.ID, bot)
+				return err
+			}
+			if hasTitle(1, womb.Titles) {
+				_, err := replyToMsg(update.Message.MessageID,
+					"Ошибка: вы лишены права уничтожать вомбата; ответьте на это сообщение командой /admin для объяснений",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			_, err = users.DeleteOne(ctx, wombFilter(womb))
+			if err != nil {
+				return err
+			}
+			kill, err := getImgs(imgsC, "kill")
+			if err != nil {
+				return err
+			}
+			_, err = replyWithPhoto(update.Message.MessageID,
+				randImg(kill), "Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", update.Message.Chat.ID,
+				bot,
+			)
 			return err
 		},
 	},

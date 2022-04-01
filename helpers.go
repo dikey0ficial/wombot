@@ -76,13 +76,13 @@ func docUpd(v interface{}, filter bson.M, col *mongo.Collection) error {
 }
 
 // sendMsg отправляет обычное сообщение
-func sendMsg(message string, chatID int64, bot *tg.BotAPI) int {
+func sendMsg(message string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewMessage(chatID, message)
 	mess, err := bot.Send(msg)
 	if err != nil {
-		debl.Println(chatID)
+		return 0, err
 	}
-	return mess.MessageID
+	return mess.MessageID, nil
 }
 
 // sendMsgMD отправляет сообщение с markdown
@@ -174,16 +174,16 @@ func replyWithPhotoMD(replyID int, id, caption string, chatID int64, bot *tg.Bot
 }
 
 // replyWithPhotoMD отвечает картинкой с текстом
-func replyWithPhoto(replyID int, id, caption string, chatID int64, bot *tg.BotAPI) int {
+func replyWithPhoto(replyID int, id, caption string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewPhoto(chatID, tg.FileID(id))
 	msg.Caption = caption
 	msg.ReplyToMessageID = replyID
 	mess, err := bot.Send(msg)
 
 	if err != nil {
-		debl.Println(chatID)
+		return 0, err
 	}
-	return mess.MessageID
+	return mess.MessageID, nil
 }
 
 // isInAttacks возвращает информацию, есть ли существо в атаках и
@@ -372,7 +372,7 @@ func getIsInUsers(id int64) (bool, error) {
 	return rCount != 0, nil
 }
 
-func wombFiter(womb User) bson.M {
+func wombFilter(womb User) bson.M {
 	return bson.M{"_id": womb.ID}
 }
 
@@ -380,5 +380,5 @@ func randomString(arr ...string) string {
 	if len(arr) == 0 {
 		return ""
 	}
-	return arr[random.Intn(len(arr))]
+	return arr[rand.Intn(len(arr))]
 }
