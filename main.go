@@ -1486,7 +1486,7 @@ func main() {
 							}
 							im := randImg(atimgs)
 							ph1, _ := replyWithPhoto(messID, im, "", peer, bot)
-							ph2 := sendPhoto(im, "", frClan.Leader, bot)
+							ph2, _ := sendPhoto(im, "", frClan.Leader, bot)
 							war1, _ := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
 							war2, _ := replyToMsg(ph2, fmt.Sprintf(
 								"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
@@ -3418,8 +3418,8 @@ func main() {
 						return
 					}
 					im := randImg(atimgs)
-					ph1 := sendPhoto(im, "", peer, bot)
-					ph2 := sendPhoto(im, "", tWomb.ID, bot)
+					ph1, _ := sendPhoto(im, "", peer, bot)
+					ph2, _ := sendPhoto(im, "", tWomb.ID, bot)
 					war1, _ := replyToMsg(ph1, "Да начнётся вомбой!", peer, bot)
 					war2, _ := replyToMsg(ph2, fmt.Sprintf(
 						"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",

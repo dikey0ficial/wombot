@@ -546,13 +546,17 @@ var commands = []command{
 						update.Message.From.ID, bot,
 					)
 				}
-				return err
+				if err != nil {
+					return err
+				}
 			} else {
 				_, err = replyToMsg(
 					update.Message.MessageID, "Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли",
 					update.Message.From.ID, bot,
 				)
-				return err
+				if err != nil {
+					return err
+				}
 			}
 			return docUpd(womb, wombFilter(womb), users)
 		},
@@ -1389,6 +1393,324 @@ var attackCommands = []command{
 				tWomb.ID, bot,
 			)
 			return err
+		},
+	},
+	{
+		Name: "cancel",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "отмена"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if len(args) > 1 {
+				_, err = replyToMsg(update.Message.MessageID, "атака отмена: слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			} else if !isInUsers {
+				_, err = replyToMsg(update.Message.MessageID, "какая атака, у тебя вобмата нет", update.Message.Chat.ID, bot)
+				return err
+			}
+			var at Attack
+			if is, isFrom := isInAttacks(update.Message.From.ID, attacks); isFrom {
+				a, err := getAttackByWomb(update.Message.From.ID, true, attacks)
+				if err != nil {
+					return err
+				}
+				at = a
+			} else if is {
+				a, err := getAttackByWomb(update.Message.From.ID, false, attacks)
+				if err != nil {
+					return err
+				}
+				at = a
+			} else {
+				_, err = replyToMsg(update.Message.MessageID, "Атаки с вами не найдено...", update.Message.Chat.ID, bot)
+				return err
+			}
+			_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
+			if err != nil {
+				return err
+			}
+			can0, err := getImgs(imgsC, "cancel_0")
+			if err != nil {
+				return err
+			}
+			can1, err := getImgs(imgsC, "cancel_1")
+			if err != nil {
+				return err
+			}
+			if at.From == int64(update.Message.From.ID) {
+				_, err = replyWithPhoto(update.Message.MessageID, randImg(can0), "Вы отменили атаку", update.Message.Chat.ID, bot)
+				if err != nil {
+					return err
+				}
+				_, err = sendPhoto(randImg(can1),
+					fmt.Sprintf(
+						"Вомбат %s решил вернуть вомбата домой. Вы свободны от атак",
+						womb.Name,
+					), at.To, bot,
+				)
+				return err
+			}
+			_, err = replyWithPhoto(update.Message.MessageID, randImg(can0), "Вы отклонили атаку", update.Message.Chat.ID, bot)
+			if err != nil {
+				return err
+			}
+			_, err = sendPhoto(randImg(can1),
+				fmt.Sprintf(
+					"Вомбат %s вежливо отказал вам в войне. Вам пришлось забрать вомбата обратно. Вы свободны от атак",
+					womb.Name,
+				), at.From, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "acccept",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "принять"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if isGroup(update.Message) {
+				_, err := replyToMsg(update.Message.MessageID, "данная команда работает (мб только пока) только в лс)", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if len(args) > 2 {
+				_, err = replyToMsg(update.Message.MessageID, "Атака принять: слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			} else if !isInUsers {
+				_, err = replyToMsg(update.Message.MessageID, "Но у вас вомбата нет...", update.Message.Chat.ID, bot)
+				return err
+			}
+			var at Attack
+			if is, isFrom := isInAttacks(update.Message.From.ID, attacks); isFrom {
+				_, err = replyToMsg(update.Message.MessageID, "Ну ты чо... атаку принимает тот, кого атакуют...", update.Message.Chat.ID, bot)
+				return err
+			} else if is {
+				a, err := getAttackByWomb(update.Message.From.ID, false, attacks)
+				if err != nil {
+					return err
+				}
+				at = a
+			} else {
+				_, err = replyToMsg(update.Message.MessageID, "Вам нечего принимать...", update.Message.Chat.ID, bot)
+				return err
+			}
+			rCount, err := users.CountDocuments(ctx, bson.M{"_id": at.From})
+			if err != nil {
+				return err
+			} else if rCount < 1 {
+				_, err = replyToMsg(update.Message.MessageID,
+					"Ну ты чаво... Соперника не существует! Как вообще мы такое допустили?! (ответь на это командой /admin)",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var tWomb User
+			err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&tWomb)
+			if err != nil {
+				return err
+			}
+			atimgs, err := getImgs(imgsC, "attacks")
+			if err != nil {
+				return err
+			}
+			im := randImg(atimgs)
+			ph1, err := sendPhoto(im, "", update.Message.Chat.ID, bot)
+			if err != nil {
+				return err
+			}
+			ph2, err := sendPhoto(im, "", tWomb.ID, bot)
+			if err != nil {
+				return err
+			}
+			war1, err := replyToMsg(ph1, "Да начнётся вомбой!", update.Message.Chat.ID, bot)
+			if err != nil {
+				return err
+			}
+			war2, err := replyToMsg(ph2, fmt.Sprintf(
+				"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
+				womb.Name), tWomb.ID, bot,
+			)
+			if err != nil {
+				return err
+			}
+			time.Sleep(5 * time.Second)
+			h1, h2 := int(womb.Health), int(tWomb.Health)
+			for _, round := range []int{1, 2, 3} {
+				f1 := uint32(2 + rand.Intn(int(womb.Force-1)))
+				f2 := uint32(2 + rand.Intn(int(tWomb.Force-1)))
+				err = editMsg(war1, fmt.Sprintf(
+					"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n -Ваш удар: %d\n\n%s:\n - здоровье: %d",
+					round, h1, f1, tWomb.Name, h2), update.Message.Chat.ID, bot,
+				)
+				if err != nil {
+					return err
+				}
+				err = editMsg(war2, fmt.Sprintf(
+					"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n - Ваш удар: %d\n\n%s:\n - здоровье: %d",
+					round, h2, f2, womb.Name, h1), tWomb.ID, bot,
+				)
+				if err != nil {
+					return err
+				}
+				time.Sleep(3 * time.Second)
+				h1 -= int(f2)
+				h2 -= int(f1)
+				err = editMsg(war1, fmt.Sprintf(
+					"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n - Ваш удар: %d\n\n%s:\n - здоровье: %d\n - 💔 удар: %d",
+					round, h1, f1, tWomb.Name, h2, f2), update.Message.Chat.ID, bot,
+				)
+				if err != nil {
+					return err
+				}
+				err = editMsg(war2, fmt.Sprintf(
+					"РАУНД %d\n\nВаш вомбат:\n - здоровье: %d\n - Ваш удар: %d\n\n%s:\n - здоровье: %d\n - 💔 удар: %d",
+					round, h2, f2, womb.Name, h1, f1), tWomb.ID, bot,
+				)
+				if err != nil {
+					return err
+				}
+				time.Sleep(5 * time.Second)
+				if int(h2)-int(f1) <= 5 && int(h1)-int(f2) <= 5 {
+					err = editMsg(war1,
+						"Вы оба сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
+						update.Message.Chat.ID, bot,
+					)
+					if err != nil {
+						return err
+					}
+					err = editMsg(war2,
+						"Вы оба сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
+						tWomb.ID, bot,
+					)
+					if err != nil {
+						return err
+					}
+					time.Sleep(5 * time.Second)
+					break
+				} else if int(h2)-int(f1) <= 5 {
+					err = editMsg(war1, fmt.Sprintf(
+						"В раунде %d благодаря своей силе победил вомбат...",
+						round), update.Message.Chat.ID, bot,
+					)
+					if err != nil {
+						return err
+					}
+					err = editMsg(war2, fmt.Sprintf(
+						"В раунде %d благодаря лишению у другого здоровья победил вомбат...",
+						round), tWomb.ID, bot,
+					)
+					return err
+					time.Sleep(3 * time.Second)
+					h1c := int(womb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+					f1c := int(womb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+					mc := int((rand.Intn(int(womb.Health)) + 1) / 2)
+					womb.Health += uint32(h1c)
+					womb.Force += uint32(f1c)
+					womb.Money += uint64(mc)
+					womb.XP += 10
+					err = editMsg(war1, fmt.Sprintf(
+						"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+						womb.Name, h1c, f1c, mc, womb.XP, womb.Health, womb.Force, womb.Money), update.Message.Chat.ID, bot,
+					)
+					if err != nil {
+						return err
+					}
+					tWomb.Health = 5
+					tWomb.Money = 50
+					err = editMsg(war2, fmt.Sprintf(
+						"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей при себе :(",
+						womb.Name), tWomb.ID, bot,
+					)
+					if err != nil {
+						return err
+					}
+					break
+				} else if int(h1)-int(f2) <= 5 {
+					editMsg(war1, fmt.Sprintf(
+						"В раунде %d благодаря своей силе победил вомбат...",
+						round), peer, bot)
+					editMsg(war2, fmt.Sprintf(
+						"В раунде %d благодаря лишению у другого здоровья победил вомбат...",
+						round), tWomb.ID, bot)
+					time.Sleep(3 * time.Second)
+					h2c := int(tWomb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+					f2c := int(tWomb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+					mc := int((rand.Intn(int(tWomb.Health)) + 1) / 2)
+					tWomb.Health += uint32(h2c)
+					tWomb.Force += uint32(f2c)
+					tWomb.Money += uint64(mc)
+					tWomb.XP += 10
+					editMsg(war2, fmt.Sprintf(
+						"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+						tWomb.Name, h2c, f2c, mc, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), tWomb.ID, bot)
+					womb.Health = 5
+					womb.Money = 50
+					editMsg(war1, fmt.Sprintf(
+						"Победил вомбат %s!!!\nВаше здоровье сбросилось до 5, а ещё у вас теперь только 50 шишей при себе :(",
+						tWomb.Name), peer, bot)
+					break
+				} else if round == 3 {
+					if h1 < h2 {
+						h2c := int(tWomb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+						f2c := int(tWomb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+						mc := int((rand.Intn(int(tWomb.Health)) + 1) / 2)
+						tWomb.Health += uint32(h2c)
+						tWomb.Force += uint32(f2c)
+						tWomb.Money += uint64(mc)
+						tWomb.XP += 10
+						editMsg(war2, fmt.Sprintf(
+							"И победил вомбат %s на раунде %d!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+							tWomb.Name, round, h2c, f2c, mc, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money), tWomb.ID, bot)
+						womb.Health = uint32(h1)
+						womb.Money = 50
+						editMsg(war1, fmt.Sprintf(
+							"И победил вомбат %s на раунде %d!\n К сожалению, теперь у вас только %d здоровья и 50 шишей при себе :(",
+							tWomb.Name, round, womb.Health), peer, bot)
+					} else {
+						h1c := int(womb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+						f1c := int(womb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
+						mc := int((rand.Intn(int(womb.Health)) + 1) / 2)
+						womb.Health += uint32(h1c)
+						womb.Force += uint32(f1c)
+						womb.Money += uint64(mc)
+						womb.XP += 10
+						editMsg(war1, fmt.Sprintf(
+							"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
+							womb.Name, h1c, f1c, mc, womb.XP, womb.Health, womb.Force, womb.Money), peer, bot)
+						tWomb.Health = 5
+						tWomb.Money = 50
+						editMsg(war2, fmt.Sprintf(
+							"Победил вомбат %s!!!\nВаше здоровье обнулилось, а ещё у вас теперь только 50 шишей при себе :(",
+							womb.Name), tWomb.ID, bot)
+					}
+				}
+			}
+			err = docUpd(womb, wFil, users)
+			if err != nil {
+				replyToMsg(messID, errStart+"attack: accept: update_to", peer, bot)
+				errl.Println("e: ", err)
+				return
+			}
+			err = docUpd(tWomb, bson.M{"_id": tWomb.ID}, users)
+			if err != nil {
+				replyToMsg(messID, errStart+"attack: accept: update_from", peer, bot)
+				errl.Println("e: ", err)
+				return
+			}
+			_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
+			if err != nil {
+				replyToMsg(messID, errStart+"attack: accept: delete", peer, bot)
+				errl.Println("e: ", err)
+				return
+			}
 		},
 	},
 }

@@ -79,10 +79,8 @@ func docUpd(v interface{}, filter bson.M, col *mongo.Collection) error {
 func sendMsg(message string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewMessage(chatID, message)
 	mess, err := bot.Send(msg)
-	if err != nil {
-		return 0, err
-	}
-	return mess.MessageID, nil
+
+	return mess.MessageID, err
 }
 
 // sendMsgMD отправляет сообщение с markdown
@@ -102,10 +100,8 @@ func replyToMsg(replyID int, message string, chatID int64, bot *tg.BotAPI) (int,
 	msg := tg.NewMessage(chatID, message)
 	msg.ReplyToMessageID = replyID
 	mess, err := bot.Send(msg)
-	if err != nil {
-		return 0, err
-	}
-	return mess.MessageID, nil
+
+	return mess.MessageID, err
 }
 
 // replyToMsgMDNL отвечает сообщением с markdown без ссылок
@@ -115,22 +111,17 @@ func replyToMsgMDNL(replyID int, message string, chatID int64, bot *tg.BotAPI) (
 	msg.ParseMode = "markdown"
 	msg.DisableWebPagePreview = true
 	mess, err := bot.Send(msg)
-	if err != nil {
-		return 0, err
-	}
-	return mess.MessageID, nil
+
+	return mess.MessageID, err
 }
 
 // sendPhoto отправляет текст с картинкой
-func sendPhoto(id, caption string, chatID int64, bot *tg.BotAPI) int {
+func sendPhoto(id, caption string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewPhoto(chatID, tg.FileID(id))
 	msg.Caption = caption
 	mess, err := bot.Send(msg)
 
-	if err != nil {
-		debl.Println(chatID)
-	}
-	return mess.MessageID
+	return mess.MessageID, err
 }
 
 // sendPhotoMD отправляет текст с markdown с картинкой
@@ -153,10 +144,7 @@ func replyToMsgMD(replyID int, message string, chatID int64, bot *tg.BotAPI) (in
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
 
-	if err != nil {
-		return 0, err
-	}
-	return mess.MessageID, nil
+	return mess.MessageID, err
 }
 
 // replyWithPhotoMD отвечает картинкой с текстом с markdown
@@ -167,10 +155,7 @@ func replyWithPhotoMD(replyID int, id, caption string, chatID int64, bot *tg.Bot
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
 
-	if err != nil {
-		return 0, err
-	}
-	return mess.MessageID, nil
+	return mess.MessageID, err
 }
 
 // replyWithPhotoMD отвечает картинкой с текстом
@@ -180,10 +165,7 @@ func replyWithPhoto(replyID int, id, caption string, chatID int64, bot *tg.BotAP
 	msg.ReplyToMessageID = replyID
 	mess, err := bot.Send(msg)
 
-	if err != nil {
-		return 0, err
-	}
-	return mess.MessageID, nil
+	return mess.MessageID, err
 }
 
 // isInAttacks возвращает информацию, есть ли существо в атаках и
