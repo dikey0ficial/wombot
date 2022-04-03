@@ -1112,4 +1112,283 @@ var commands = []command{
 			return err
 		},
 	},
+	{
+		Name: "attack",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "атака"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 1 {
+				_, err := replyToMsg(update.Message.MessageID, "неправда", update.Message.Chat.ID, bot)
+				return err
+			}
+			for _, cmd := range attackCommands {
+				if cmd.Is(args[1:], update) {
+					err := cmd.Action(args, update, womb)
+					if err != nil {
+						err = fmt.Errorf("%s: %v", cmd.Name, err)
+					}
+					return err
+				}
+			}
+			_, err := replyToMsg(update.Message.MessageID, "не знаю такой команды", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+}
+
+var attackCommands = []command{
+	{
+		Name: "attack",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "атака"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			_, err := replyToMsg(update.Message.MessageID, strings.Repeat("атака ", 42), update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "status",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "статус"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			var ID int64
+			if len(args) == 1 {
+				if !isInUsers {
+					_, err = replyToMsg(update.Message.MessageID, "Но у вас вомбата нет...", update.Message.Chat.ID, bot)
+					return err
+				}
+				ID = int64(update.Message.From.ID)
+			} else if len(args) > 2 {
+				_, err = replyToMsg(update.Message.MessageID, "Атака статус: слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			strID := args[1]
+			if rCount, err := users.CountDocuments(ctx,
+				bson.M{"name": cins(strID)}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Пользователя с никнеймом `%s` не найдено", strID), update.Message.Chat.ID, bot)
+				return err
+			}
+			var tWomb User
+			err = users.FindOne(ctx, bson.M{"name": cins(strID)}).Decode(&tWomb)
+			if err != nil {
+				return err
+			}
+			ID = tWomb.ID
+			var at Attack
+			if is, isFrom := isInAttacks(ID, attacks); isFrom {
+				a, err := getAttackByWomb(ID, true, attacks)
+				if err != nil {
+					return err
+				}
+				at = a
+			} else if is {
+				a, err := getAttackByWomb(update.Message.From.ID, false, attacks)
+				if err != nil {
+					return err
+				}
+				at = a
+			} else {
+				_, err = replyToMsg(update.Message.MessageID, "Атак нет", update.Message.Chat.ID, bot)
+				return err
+			}
+			var fromWomb, toWomb User
+			err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&fromWomb)
+			if err != nil {
+				return err
+			}
+			err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&toWomb)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"От: %s (%d)\nКому: %s (%d)\n",
+					fromWomb.Name, fromWomb.ID,
+					toWomb.Name, toWomb.ID,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "to",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "на"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if len(args) < 2 {
+				_, err = replyToMsg(update.Message.MessageID, "Атака на: на кого?", update.Message.Chat.ID, bot)
+				return err
+			} else if len(args) != 2 {
+				_, err = replyToMsg(update.Message.MessageID, "Атака на: слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			} else if !isInUsers {
+				_, err = replyToMsg(update.Message.MessageID, "Вы не можете атаковать в виду остутствия вомбата", update.Message.Chat.ID, bot)
+				return err
+			} else if womb.Sleep {
+				_, err = replyToMsg(update.Message.MessageID, "Но вы же спите...", update.Message.Chat.ID, bot)
+				return err
+			}
+			strID := args[1]
+			var (
+				ID    int64
+				tWomb User
+			)
+			if is, isFrom := isInAttacks(update.Message.From.ID, attacks); isFrom {
+				at, err := getAttackByWomb(update.Message.From.ID, true, attacks)
+				if err != nil && err != errNoAttack {
+					return err
+				}
+				var aWomb User
+				err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&aWomb)
+				if err != nil {
+					return err
+				}
+				_, err = replyToMsgMD(update.Message.MessageID,
+					fmt.Sprintf(
+						"Вы уже атакуете вомбата `%s`. Чтобы отозвать атаку, напишите `атака отмена`",
+						aWomb.Name,
+					),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if is {
+				at, err := getAttackByWomb(update.Message.From.ID, false, attacks)
+				if err != nil && err != errNoAttack {
+					return err
+				}
+				var aWomb User
+				err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&aWomb)
+				if err != nil {
+					return err
+				}
+				_, err = replyToMsgMD(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"Вас уже атакует вомбат `%s`. Чтобы отклонить атаку, напишите `атака отмена`",
+						aWomb.Name,
+					),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if rCount, err := users.CountDocuments(ctx,
+				bson.M{"name": cins(strID)}); err != nil && rCount != 0 {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"Пользователя с именем `%s` не найдено",
+						strID),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			err = users.FindOne(ctx, bson.M{"name": cins(strID)}).Decode(&tWomb)
+			if err != nil {
+				return err
+			}
+			ID = tWomb.ID
+			if ID == int64(update.Message.MessageID) {
+				_, err = replyToMsg(update.Message.MessageID, "„Главная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", update.Message.From.ID, bot)
+				return err
+			}
+			err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
+			if err != nil {
+				return err
+			}
+			if tWomb.Sleep {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"Вомбат %s спит. Его атаковать не получится",
+						tWomb.Name,
+					),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if is, isFrom := isInAttacks(ID, attacks); isFrom {
+				at, err := getAttackByWomb(ID, true, attacks)
+				if err != nil && err != errNoAttack {
+					return err
+				}
+				var aWomb User
+				err = users.FindOne(ctx, bson.M{"_id": at.To}).Decode(&aWomb)
+				if err != nil {
+					return err
+				}
+				_, err = replyToMsgMD(
+					update.Message.MessageID, fmt.Sprintf(
+						"%s уже атакует вомбата %s. Попросите %s решить данную проблему",
+						strID, aWomb.Name, strID,
+					),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if is {
+				at, err := getAttackByWomb(int64(update.Message.MessageID), false, attacks)
+				if err != nil && err != errNoAttack {
+					return err
+				}
+				var aWomb User
+				err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&aWomb)
+				if err != nil {
+					return err
+				}
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"Вомбат %s уже атакуется %s. Попросите %s решить данную проблему",
+						strID, aWomb.Name, strID,
+					),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var newAt = Attack{
+				ID:   strconv.Itoa(int(update.Message.From.ID)) + "_" + strconv.Itoa(int(ID)),
+				From: int64(update.Message.From.ID),
+				To:   ID,
+			}
+			_, err = attacks.InsertOne(ctx, newAt)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Вы отправили вомбата атаковать %s. Ждём ответа!\nОтменить можно командой `атака отмена`",
+					tWomb.Name,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg(
+				fmt.Sprintf(
+					"Ужас! Вас атакует %s. Предпримите какие-нибудь меры: отмените атаку (`атака отмена`) или примите (`атака принять`)",
+					womb.Name,
+				),
+				tWomb.ID, bot,
+			)
+			return err
+		},
+	},
 }
