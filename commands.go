@@ -1830,4 +1830,70 @@ var bankCommands = []command{
 			return err
 		},
 	},
+	{
+		Name: "put",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "положить"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			isBanked, err := getIsBanked(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(update.Message.MessageID, "У тебя нет вомбата...", update.Message.Chat.ID, bot)
+				return err
+			} else if len(args) != 3 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк положить: недостаточно аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			var num uint64
+			if num, err = strconv.ParseUint(args[2], 10, 64); err != nil {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк положить: требуется целое неотрицательное число шишей до 2^64", update.Message.Chat.ID, bot)
+				return err
+			}
+			if womb.Money < num+1 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк положить: недостаточно шишей при себе для операции", update.Message.Chat.ID, bot)
+				return err
+			} else if !isBanked {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вомбанк положить: у вас нет ячейки в банке! Заведите её через `вомбанк начать`",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if num == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Ну и зачем?)", update.Message.Chat.ID, bot)
+				return err
+			}
+			var b Banked
+			err = bank.FindOne(ctx, wombFilter(womb)).Decode(&b)
+			if err != nil {
+				return err
+			}
+			womb.Money -= num
+			b.Money += num
+			err = docUpd(womb, wombFilter(womb), users)
+			if err != nil {
+				return err
+			}
+			err = docUpd(b, wombFilter(womb), bank)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Ваш вомбосчёт пополнен на %d ш! Вомбосчёт: %d ш; При себе: %d ш",
+					num, b.Money, womb.Money,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
 }
