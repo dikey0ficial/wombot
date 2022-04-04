@@ -354,6 +354,11 @@ func getIsInUsers(id int64) (bool, error) {
 	return rCount != 0, nil
 }
 
+func getIsBanked(id int64) (bool, error) {
+	rCount, err := bank.CountDocuments(ctx, bson.M{"_id": id})
+	return rCount != 0, err
+}
+
 func wombFilter(womb User) bson.M {
 	return bson.M{"_id": womb.ID}
 }

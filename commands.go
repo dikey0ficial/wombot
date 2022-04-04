@@ -1139,6 +1139,29 @@ var commands = []command{
 			return err
 		},
 	},
+	{
+		Name: "wombank",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "вомбанк"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 1 {
+				_, err := replyToMsg(update.Message.MessageID, "неправда", update.Message.Chat.ID, bot)
+				return err
+			}
+			for _, cmd := range bankCommands {
+				if cmd.Is(args[1:], update) {
+					err := cmd.Action(args, update, womb)
+					if err != nil {
+						err = fmt.Errorf("%s: %v", cmd.Name, err)
+					}
+					return err
+				}
+			}
+			_, err := replyToMsg(update.Message.MessageID, "не знаю такой команды", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
 }
 
 var attackCommands = []command{
@@ -1751,6 +1774,59 @@ var attackCommands = []command{
 				return err
 			}
 			_, err = attacks.DeleteOne(ctx, bson.M{"_id": at.ID})
+			return err
+		},
+	},
+}
+
+var bankCommands = []command{
+	{
+		Name: "wombank",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "вомбанк"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			_, err := replyToMsg(update.Message.MessageID, strings.Repeat("вомбанк ", 42), update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "new",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "начать"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			isBanked, err := getIsBanked(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if len(args) != 2 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк начать: слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			} else if isBanked {
+				_, err = replyToMsg(update.Message.MessageID, "Ты уже зарегестрирован в вомбанке...", update.Message.Chat.ID, bot)
+				return err
+			} else if !isInUsers {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк вомбатам! У тебя нет вомбата", update.Message.Chat.ID, bot)
+				return err
+			}
+			b := Banked{
+				ID:    update.Message.From.ID,
+				Money: 15,
+			}
+			_, err = bank.InsertOne(ctx, b)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				"Вы были зарегестрированы в вомбанке! Вам на вомбосчёт добавили бесплатные 15 шишей",
+				update.Message.Chat.ID, bot,
+			)
 			return err
 		},
 	},
