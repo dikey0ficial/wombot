@@ -1966,4 +1966,83 @@ var bankCommands = []command{
 			return err
 		},
 	},
+	{
+		Name: "status",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "статус"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var (
+				fil   bson.M
+				tWomb User
+				err   error
+			)
+			switch len(args) {
+			case 2:
+				isInUsers, err := getIsInUsers(update.Message.From.ID)
+				if err != nil {
+					return err
+				}
+				isBanked, err := getIsBanked(update.Message.From.ID)
+				if err != nil {
+					return err
+				}
+				if !isInUsers {
+					_, err = replyToMsg(update.Message.MessageID, "Вомбанк вомбатам! У тебя нет вомбата", update.Message.Chat.ID, bot)
+					return err
+				} else if !isBanked {
+					_, err = replyToMsg(update.Message.MessageID, "Вы не можете посмотреть вомбосчёт, которого нет", update.Message.Chat.ID, bot)
+					return err
+				}
+				fil = bson.M{"_id": update.Message.From.ID}
+				tWomb = womb
+			case 3:
+				name := args[2]
+				if !isValidName(name) {
+					_, err = replyToMsg(update.Message.MessageID, "Нелегальное имя", update.Message.Chat.ID, bot)
+					return err
+				} else if rCount, err := users.CountDocuments(
+					ctx, bson.M{"name": cins(name)}); err != nil {
+					return err
+				} else if rCount == 0 {
+					_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Ошибка: вомбата с именем %s не найдено", name), update.Message.Chat.ID, bot)
+					return err
+				}
+				err = users.FindOne(ctx, bson.M{"name": cins(name)}).Decode(&tWomb)
+				if err != nil {
+					return err
+				}
+				fil = bson.M{"_id": tWomb.ID}
+				bCount, err := bank.CountDocuments(ctx, fil)
+				if err != nil {
+					return err
+				}
+				if bCount == 0 {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Ошибка: вомбат с таким именем не зарегестрирован в вомбанке",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+			default:
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк статус: слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			var b Banked
+			err = bank.FindOne(ctx, fil).Decode(&b)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Вомбанк вомбата %s:\nНа счету: %d\nПри себе: %d",
+					tWomb.Name, b.Money, tWomb.Money,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
 }
