@@ -1128,7 +1128,7 @@ var commands = []command{
 			}
 			for _, cmd := range attackCommands {
 				if cmd.Is(args[1:], update) {
-					err := cmd.Action(args, update, womb)
+					err := cmd.Action(args, update, womb) //TODO: проверить, надо ли добавить [1:]
 					if err != nil {
 						err = fmt.Errorf("%s: %v", cmd.Name, err)
 					}
@@ -1889,6 +1889,76 @@ var bankCommands = []command{
 				update.Message.MessageID,
 				fmt.Sprintf(
 					"Ваш вомбосчёт пополнен на %d ш! Вомбосчёт: %d ш; При себе: %d ш",
+					num, b.Money, womb.Money,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "take",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "снять"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			isBanked, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(update.Message.MessageID, "У тебя нет вомбата...", update.Message.Chat.ID, bot)
+				return err
+			} else if !isBanked {
+				_, err = replyToMsg(update.Message.MessageID, "у тебя нет ячейки в вомбанке", update.Message.Chat.ID, bot)
+				return err
+			} else if len(args) != 3 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк снять: недостаточно аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			var b Banked
+			err = bank.FindOne(ctx, wombFilter(womb)).Decode(&b)
+			if err != nil {
+				return err
+			}
+			var num uint64
+			if num, err = strconv.ParseUint(args[2], 10, 64); err != nil {
+				if num == 0 {
+					_, err = replyToMsg(update.Message.MessageID, "Ну и зачем?", update.Message.Chat.ID, bot)
+					return err
+				}
+			} else if args[2] == "всё" || args[2] == "все" {
+				if b.Money == 0 {
+					_, err = replyToMsg(update.Message.MessageID, "У вас на счету 0 шишей. Зачем?", update.Message.Chat.ID, bot)
+					return err
+				}
+				num = b.Money
+			} else {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк снять: требуется целое неотрицательное число шишей до 2^64", update.Message.Chat.ID, bot)
+				return err
+			}
+			if b.Money < num {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбанк снять: недостаточно шишей на вомбосчету для операции", update.Message.Chat.ID, bot)
+				return err
+			}
+			b.Money -= num
+			womb.Money += num
+			err = docUpd(b, wombFilter(womb), bank)
+			if err != nil {
+				return err
+			}
+			err = docUpd(womb, wombFilter(womb), users)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Вы сняли %d ш! Вомбосчёт: %d ш; При себе: %d ш",
 					num, b.Money, womb.Money,
 				),
 				update.Message.Chat.ID, bot,
