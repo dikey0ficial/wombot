@@ -2440,4 +2440,244 @@ var clanCommands = []command{
 			}
 		},
 	},
+	{
+		Name: "transfer",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "передать"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if len(args) != 3 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: слишком много или мало аргументов. Синтаксис: клан передать [ник]",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата (хлюп) нет",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: вы не лидер ни в одном клане!!!11!!!",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if rCount, err := users.CountDocuments(ctx,
+				bson.M{"name": cins(args[2])}); err != nil {
+				return err
+			} else if rCount == 0 {
+				replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: пользователя с таким ником не найдено",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var newLead User
+			err = users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&newLead)
+			if err != nil {
+				return err
+			}
+			if strings.ToLower(args[2]) == strings.ToLower(womb.Name) {
+				_, err = replyToMsg(update.Message.MessageID, "Но ты и так лидер...", update.Message.Chat.ID, bot)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"members": newLead.ID}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf("Ошибка: вомбат `%s` не состоит ни в одном клане", newLead.Name),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var uClan Clan
+			err = clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&uClan)
+			if err != nil {
+				return err
+			}
+			var isIn bool = false
+			for _, id := range uClan.Members {
+				if id == newLead.ID {
+					isIn = true
+					break
+				}
+			}
+			if !isIn {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf("Ошибка: вы и %s состоите в разных кланах", newLead.Name),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			uClan.Leader = newLead.ID
+			err = docUpd(uClan, bson.M{"_id": uClan.Tag}, clans)
+			if err != nil {
+				return err
+			}
+			if hasTitle(5, womb.Titles) {
+				newTitles := []uint16{}
+				for _, id := range womb.Titles {
+					if id == 5 {
+						continue
+					}
+					newTitles = append(newTitles, id)
+				}
+				womb.Titles = newTitles
+				if err != nil {
+					return err
+				}
+			}
+			if !hasTitle(5, newLead.Titles) {
+				newLead.Titles = append(newLead.Titles, 5)
+				err = docUpd(newLead, bson.M{"_id": newLead.ID}, users)
+				if err != nil {
+					return err
+				}
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Отлично! Вомбат `%s` теперь главный в клане `%s`",
+					newLead.Name, uClan.Tag,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg("Вам передали права на клан!", newLead.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "quit",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "выйти"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет (мне уже надоело это писать в каждом сообщении, заведи уже вомбата нафек)",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			} else if len(args) != 2 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: слишком много или мало аргументов. Синтаксис: клан выйти",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Клан выйти: вы не состоите ни в одном клане", update.Message.Chat.ID, bot)
+				return err
+			}
+			var uClan Clan
+			err = clans.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&uClan)
+			if err != nil {
+				return err
+			}
+			if len(uClan.Members) == 1 {
+				_, err = clans.DeleteOne(ctx, bson.M{"_id": uClan.Tag})
+				if err != nil {
+					return err
+				}
+				if uClan.Leader == update.Message.From.ID {
+					if hasTitle(5, womb.Titles) {
+						newTitles := []uint16{}
+						for _, id := range womb.Titles {
+							if id == 5 {
+								continue
+							}
+							newTitles = append(newTitles, id)
+						}
+						womb.Titles = newTitles
+						err = docUpd(womb, wombFilter(womb), users)
+						if err != nil {
+							return err
+						}
+					}
+				}
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Так как вы были одни в клане, то клан удалён",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if uClan.Leader == update.Message.From.ID {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Клан выйти: вы лидер. Передайте кому-либо ваши права",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			newMembers := []int64{}
+			for _, id := range uClan.Members {
+				if id == update.Message.From.ID {
+					continue
+				}
+				newMembers = append(newMembers, id)
+			}
+			var (
+				rep    string = "Вы вышли из клана. Вы свободны!"
+				msgtol string = "Вомбат `" + womb.Name + "` вышел из клана."
+			)
+			uClan.Members = newMembers
+			if uClan.Banker == update.Message.From.ID && uClan.Leader != uClan.Banker {
+				uClan.Banker = uClan.Leader
+				rep += "\nБанкиром вместо вас стал лидер клана."
+				msgtol += "\nТак как этот вомбат был банкиром, Вы стали банкиром клана."
+			}
+			err = docUpd(uClan, bson.M{"_id": uClan.Tag}, clans)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				rep,
+				update.Message.Chat.ID,
+				bot,
+			)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg(msgtol, uClan.Leader, bot)
+			if err != nil {
+				return err
+			}
+			if update.Message.Chat.ID != uClan.GroupID {
+				_, err = sendMsg("Вомбат "+womb.Name+" вышел из клана.", uClan.GroupID, bot)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
