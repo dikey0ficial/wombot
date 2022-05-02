@@ -2680,4 +2680,665 @@ var clanCommands = []command{
 			return nil
 		},
 	},
+	{
+		Name: "status",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "статус"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) > 3 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"Клан статус: слишком много аргументов! Синтаксис: клан статус ([тег])",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			var sClan Clan
+			if len(args) == 2 {
+				if !isInUsers {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Вы не имеете вомбата. Соответственно, вы не состоите в ни в одном вомбоклане",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				} else if rCount, err := clans.CountDocuments(ctx,
+					bson.M{"members": update.Message.From.ID}); err != nil {
+					return err
+				} else if rCount == 0 {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Клан статус: вы не состоите ни в одном клане",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+				err = clans.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&sClan)
+				if err != nil {
+					return err
+				}
+			} else {
+				if l := len([]rune(args[2])); !(l >= 3 && l <= 5) {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Ошибка: слишком длинный или короткий тег",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				} else if !isValidTag(args[2]) {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Ошибка: тег нелегален",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				} else if rCount, err := clans.CountDocuments(ctx,
+					bson.M{"_id": cins(args[2])}); err != nil {
+					return err
+				} else if rCount == 0 {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						fmt.Sprintf(
+							"Ошибка: клана с тегом `%s` не существует",
+							args[2],
+						),
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+				err = clans.FindOne(ctx, bson.M{"_id": cins(args[2])}).Decode(&sClan)
+				if err != nil {
+					return err
+				}
+			}
+			var (
+				msg string = fmt.Sprintf(
+					"Клан `%s` [%s]\n 💰 Казна: %d шишей\n 🐽 Участники:\n",
+					sClan.Name, sClan.Tag, sClan.Money,
+				)
+				midHealth, midForce uint32
+				lost                uint8 = 0
+			)
+			var tWomb User
+			for i, id := range sClan.SortedMembers() { // append для порядка
+				if rCount, err := users.CountDocuments(ctx,
+					bson.M{"_id": id}); err != nil {
+					return err
+				} else if rCount == 0 {
+					msg += " - Вомбат не найден :("
+					lost++
+					continue
+				} else {
+					err = users.FindOne(ctx, bson.M{"_id": id}).Decode(&tWomb)
+					if err != nil {
+						return err
+					}
+					msg += fmt.Sprintf("        %d. %s", i+1, tWomb.Name)
+					if id == sClan.Leader {
+						msg += " | Лидер"
+					} else if sClan.Banker == id {
+						msg += " | Казначей"
+					}
+					midHealth += tWomb.Health
+					midForce += tWomb.Force
+				}
+				msg += "\n"
+			}
+			if uint32(len(sClan.Members)-int(lost)) != 0 {
+				midHealth /= uint32(len(sClan.Members) - int(lost))
+				midForce /= uint32(len(sClan.Members) - int(lost))
+			} else {
+				midHealth, midForce = 0, 0
+			}
+			msg += fmt.Sprintf(
+				" ❤ Среднее здоровье: %d\n ⚡ Средняя мощь: %d\n 👁 XP: %d",
+				midHealth, midForce, sClan.XP,
+			)
+			_, err = replyToMsg(update.Message.MessageID, msg, update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "award",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "награда"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вы не состоите ни в одном клане", update.Message.Chat.ID, bot)
+				return err
+			}
+			var sClan Clan
+			if err := clans.FindOne(ctx, bson.M{"members": update.Message.MessageID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if !(update.Message.From.ID == sClan.Leader || update.Message.From.ID == sClan.Banker) {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Для того, чтобы получить награду, вы должны быть казначеем или лидером",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if e := time.Now().Sub(sClan.LastRewardTime); e < 24*time.Hour {
+				left := (24 * time.Hour) - e
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"С момента прошлого получения награды не прошло 24 часов. "+
+							"Осталось %d часов %d минут",
+						int64(left.Hours()), int64(left.Minutes())-int64(left.Hours())*60,
+					),
+					update.Message.Chat.ID, bot,
+				)
+				/*
+					debl.Printf(
+						"%.f, %.f, %v, %v",
+						left.Hours(), left.Hours()*60-left.Minutes(), left.Hours(),
+						left.Hours()*60-left.Minutes(),
+					)
+				*/
+				return err
+			}
+			add := 500 + rand.Intn(200) - rand.Intn(200)
+			sClan.Money += uint64(add)
+			sClan.LastRewardTime = time.Now()
+			if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"В казну клана поступило %d шишей! Теперь их %d",
+					add, sClan.Money,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "rating",
+		Is: func(args []string, update tg.Update) bool {
+			lowarg := strings.ToLower(args[0])
+			return lowarg == "рейтинг" || lowarg == "топ"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var (
+				name  string = "xp"
+				queue int8   = -1
+				err   error  // because yes
+			)
+			if len(args) >= 3 && len(args) < 5 {
+				if isInList(args[2], []string{"шиши", "деньги", "money"}) {
+					name = "money"
+				} else if isInList(args[2], []string{"хп", "опыт", "xp", "хрю"}) {
+					name = "xp"
+				} else {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"не понимаю первого аргумента(",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+				if len(args) == 4 {
+					if isInList(args[3], []string{"+", "плюс", "++", "увеличение"}) {
+						queue = 1
+					} else if isInList(args[3], []string{"-", "минус", "--", "уменьшение"}) {
+						queue = -1
+					} else {
+						_, err = replyToMsg(
+							update.Message.MessageID,
+							"не понимаю второго аргумента, рял",
+							update.Message.From.ID, bot,
+						)
+						return err
+					}
+				}
+			} else if len(args) != 2 {
+				_, err = replyToMsg(update.Message.MessageID, "Слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			opts := options.Find()
+			opts.SetSort(bson.M{name: queue})
+			opts.SetLimit(10)
+			cur, err := clans.Find(ctx, bson.M{}, opts)
+			if err != nil {
+				return err
+			}
+			var rating []Clan
+			for cur.Next(ctx) {
+				var cl Clan
+				cur.Decode(&cl)
+				rating = append(rating, cl)
+			}
+			var msg string = "Топ-10 кланов по "
+			switch name {
+			case "money":
+				msg += "шишам в казне "
+			case "xp":
+				msg += "XP "
+				// no default because idk what i should put here
+			}
+			msg += "в порядке "
+			switch queue {
+			case 1:
+				msg += "увеличения:"
+			case -1:
+				msg += "уменьшения:"
+			}
+			msg += "\n"
+			for num, cl := range rating {
+				switch name {
+				case "money":
+					msg += fmt.Sprintf("%d | [%s] `%s` | %d шишей в казне\n", num+1, cl.Tag, cl.Name, cl.Money)
+				case "xp":
+					msg += fmt.Sprintf("%d | [%s] `%s` | %d XP\n", num+1, cl.Tag, cl.Name, cl.XP)
+				}
+			}
+			msg = strings.TrimSuffix(msg, "\n")
+			_, err = replyToMsg(update.Message.MessageID, msg, update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "list_banned",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "забаненные"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Данный раздел доступен только лидерам клана; вы не являетесь лидером.",
+					update.Message.From.ID,
+					bot,
+				)
+				return err
+			}
+			var sClan Clan
+			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if len(sClan.Banned) == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Никто не в бане!", update.Message.Chat.ID, bot)
+				return err
+			}
+			var msg string = "⛔ Список забаненных:\n"
+			for _, id := range sClan.Banned {
+				var bWomb User
+				if err := users.FindOne(ctx, bson.M{"_id": id}).Decode(&bWomb); err != nil {
+					msg += " — [в процессе нахождения вомбата произошла ошибка]\n"
+				}
+				msg += " — " + bWomb.Name + "\n"
+			}
+			_, err = replyToMsg(update.Message.MessageID, msg, update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "kick",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "кик"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 2 {
+				_, err := replyToMsg(update.Message.MessageID, "кого?", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вы не являетесь лидером ни одного клана", update.Message.Chat.ID, bot)
+				return err
+			}
+			if c, err := users.CountDocuments(ctx, bson.M{"name": cins(args[2])}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбата с таким ником не найдено...", update.Message.Chat.ID, bot)
+				return err
+			}
+			var (
+				sClan Clan
+				kWomb User
+			)
+			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&kWomb); err != nil {
+				return err
+			}
+			var is bool
+			for _, id := range sClan.Members {
+				if id == kWomb.ID {
+					is = true
+					break
+				}
+			}
+			if !is {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вомбат с этим ником не состоит в Вашем клане",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if kWomb.ID == update.Message.From.ID {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Если хотите выйти из клана, то напишите `клан выйти`",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			var appmsg string
+			var nm []int64
+			for _, id := range sClan.Members {
+				if id == kWomb.ID {
+					continue
+				}
+				nm = append(nm, id)
+			}
+			sClan.Members = nm
+			if kWomb.ID == sClan.Banker {
+				appmsg = "Теперь казначеем стали Вы."
+				sClan.Banker = sClan.Leader
+			}
+			if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
+				return err
+			}
+			_, err = replyToMsg(update.Message.MessageID, "Готово!\n"+appmsg, update.Message.Chat.ID, bot)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg(fmt.Sprintf("Вас кикнули из клана `%s` [%s]", sClan.Name, sClan.Tag), kWomb.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "ban",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "бан"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 2 {
+				_, err := replyToMsg(update.Message.MessageID, "кого?", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вы не являетесь лидером ни одного клана", update.Message.Chat.ID, bot)
+				return err
+			}
+			if c, err := users.CountDocuments(ctx, bson.M{"name": cins(args[2])}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбата с таким ником не найдено...", update.Message.Chat.ID, bot)
+				return err
+			}
+			var (
+				sClan Clan
+				kWomb User
+			)
+			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.Chat.ID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&kWomb); err != nil {
+				return err
+			}
+			var is bool
+			for _, id := range sClan.Members {
+				if id == kWomb.ID {
+					is = true
+					break
+				}
+			}
+			if !is {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбат с этим ником не состоит в Вашем клане", update.Message.Chat.ID, bot)
+				return err
+			}
+			if kWomb.ID == update.Message.From.ID {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Если Вы хотите быть забанеными, то передайте права лидера и попросите забанить Вас нового лидера",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			for _, id := range sClan.Banned {
+				if id == kWomb.ID {
+					_, err = replyToMsg(update.Message.MessageID, "Этот вомбат уже забанен", update.Message.Chat.ID, bot)
+					return err
+				}
+			}
+			sClan.Banned = append(sClan.Banned, kWomb.ID)
+			var appmsg string
+			var nm []int64
+			for _, id := range sClan.Members {
+				if id == kWomb.ID {
+					continue
+				}
+				nm = append(nm, id)
+			}
+			sClan.Members = nm
+			if kWomb.ID == sClan.Banker {
+				appmsg = "Теперь казначеем стали Вы."
+				sClan.Banker = sClan.Leader
+			}
+			if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
+				return err
+			}
+			_, err = replyToMsg(update.Message.MessageID, "Готово!\n"+appmsg, update.Message.Chat.ID, bot)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg(fmt.Sprintf("Вас забанили в клане `%s` [%s]", sClan.Name, sClan.Tag), kWomb.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "unban",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "разбан"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 2 {
+				_, err := replyToMsg(update.Message.MessageID, "кого?", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вы не являетесь лидером ни одного клана", update.Message.Chat.ID, bot)
+				return err
+			}
+			if c, err := users.CountDocuments(ctx, bson.M{"name": cins(args[2])}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вомбата с таким ником не найдено...", update.Message.Chat.ID, bot)
+				return err
+			}
+			var (
+				sClan Clan
+				kWomb User
+			)
+			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.MessageID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&kWomb); err != nil {
+				return err
+			}
+			var is bool
+			var nb []int64
+			for _, id := range sClan.Banned {
+				if id == kWomb.ID {
+					is = true
+					continue
+				}
+				nb = append(nb, id)
+			}
+			if !is {
+				_, err = replyToMsg(update.Message.MessageID, "Данный вомбат не забанен в Вашем клане", update.Message.Chat.ID, bot)
+				return err
+			}
+			sClan.Banned = nb
+			if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
+				return err
+			}
+			_, err = replyToMsg(update.Message.MessageID, "Успешно!", update.Message.Chat.ID, bot)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg(fmt.Sprintf("Вы были разбанены в клане `%s` [%s]", sClan.Name, sClan.Tag), kWomb.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "rename",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "переименовать"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) < 3 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"Слишком мало аргументов! Синтаксис: `клан переименовать [имя (можно пробелы)]`",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вы не являетесь лидером ни в одном клане",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			name := strings.Join(args[2:], " ")
+			if len([]rune(name)) > 64 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Слишком длинное имя! Оно должно быть максимум 64 символов",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if len([]rune(name)) < 2 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Слишком короткое имя! Оно должно быть минимум 3 символа",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if _, err := clans.UpdateOne(ctx, bson.M{"leader": update.Message.From.ID}, bson.M{
+				"$set": bson.M{
+					"name": name,
+				},
+			}); err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf("Имя Вашего клана было успешно сменено на `%s`", name),
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
+		},
+	},
 }
