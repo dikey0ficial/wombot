@@ -3341,4 +3341,96 @@ var clanCommands = []command{
 			return err
 		},
 	},
+	{
+		Name: "settings",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "настройки"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) > 4 {
+				_, err := replyToMsg(update.Message.MessageID, "слишком много аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вы не являетесь лидером ни одного клана.",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var sClan Clan
+			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if len(args) == 2 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"Настройки клана:\n"+
+							"  доступен_для_входа: %s",
+						bool2string(sClan.Settings.AviableToJoin),
+					),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			switch strings.ToLower(args[2]) {
+			case "доступен_для_входа":
+				if len(args) == 3 {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"доступен_для_входа: "+bool2string(sClan.Settings.AviableToJoin),
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				} else if ans := strings.ToLower(args[3]); ans == "да" {
+					sClan.Settings.AviableToJoin = true
+				} else if ans == "нет" {
+					sClan.Settings.AviableToJoin = false
+				} else {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Поддерживаются только ответы `да` и `нет`",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+			default:
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					fmt.Sprintf("Настройка с именем `%s не обнаружена", strings.ToLower(args[2])),
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if err := docUpd(sClan, bson.M{"leader": update.Message.From.ID}, clans); err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Настройка `%s` теперь имеет значение `%s`",
+					strings.ToLower(args[2]),
+					strings.ToLower(args[3]),
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
 }

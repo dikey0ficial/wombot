@@ -288,7 +288,7 @@ func cins(s string) primitive.Regex {
 	}
 }
 
-func b2s(b bool) string {
+func bool2string(b bool) string {
 	if b {
 		return "да"
 	}
