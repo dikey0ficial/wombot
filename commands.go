@@ -1653,7 +1653,9 @@ var attackCommands = []command{
 						"В раунде %d благодаря лишению у другого здоровья победил вомбат...",
 						round), tWomb.ID, bot,
 					)
-					return err
+					if err != nil {
+						return err
+					}
 					time.Sleep(3 * time.Second)
 					h1c := int(womb.Health) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
 					f1c := int(womb.Force) / ((5 + rand.Intn(5)) / (rand.Intn(1) + 1))
@@ -3430,6 +3432,236 @@ var clanCommands = []command{
 				),
 				update.Message.Chat.ID, bot,
 			)
+			return err
+		},
+	},
+	{
+		Name: "bank",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "казна"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 1 {
+				_, err := replyToMsg(update.Message.MessageID, "жесь", update.Message.Chat.ID, bot)
+				return err
+			}
+			var fullArgs = append([]string{"клан"}, args...)
+			for _, cmd := range clanBankCommands {
+				if cmd.Is(fullArgs, update) {
+					err := cmd.Action(fullArgs, update, womb)
+					if err != nil {
+						err = fmt.Errorf("%s: %v", cmd.Name, err)
+					}
+					return err
+				}
+			}
+			_, err := replyToMsg(update.Message.MessageID, "не знаю такой команды", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+}
+
+var clanBankCommands = []command{
+	{
+		Name: "bank",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[2]) == "казна"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			_, err := replyToMsg(
+				update.Message.MessageID,
+				strings.Repeat("казна ", 42),
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "take",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[2]) == "снять"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) != 4 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"Слишком мало или много аргументов",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"members": womb.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "Вы не состоите ни в одном клане", update.Message.Chat.ID, bot)
+				return err
+			}
+			var sClan Clan
+			if err := clans.FindOne(ctx, bson.M{"members": womb.ID}).Decode(&sClan); err != nil {
+				return err
+			}
+			if !(sClan.Leader == womb.ID || sClan.Banker == womb.ID) {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: вы не обладаете правом снимать деньги с казны (только лидер и казначей)",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var take uint64
+			if take, err = strconv.ParseUint(args[3], 10, 64); err != nil {
+				if args[3] == "всё" {
+					take = sClan.Money
+				} else {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"Ошибка: введено не число, либо число больше 2^63, либо отрицательное, либо дробное. короче да.",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+			}
+			if take > sClan.Money {
+				_, err = replyToMsg(update.Message.MessageID, "Запрашиваемая сумма выше количества денег в казне", update.Message.Chat.ID, bot)
+				return err
+			} else if take == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Хитр(ый/ая) как(ой/ая)",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if _, err = clans.UpdateOne(ctx, bson.M{"_id": sClan.Tag},
+				bson.M{"$inc": bson.M{"money": -int(take)}}); err != nil {
+				return err
+			} else if _, err = users.UpdateOne(ctx, bson.M{"_id": womb.ID},
+				bson.M{"$inc": bson.M{"money": int(take)}}); err != nil {
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Вы успешно сняли из казны %d Ш! Теперь в казне %d Ш, а у вас на счету %d",
+					take, sClan.Money-take, womb.Money+take,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "put",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[2]) == "положить"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) != 4 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"Слишком много или мало аргументов",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вы не состоите ни в одном клане",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var sClan Clan
+			if err := clans.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&sClan); err != nil {
+				return err
+			}
+			var (
+				take uint64
+			)
+			if take, err = strconv.ParseUint(args[3], 10, 64); err != nil {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: введено не число, либо число больше 2^63, либо отрицательное, либо дробное. короче да.",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if take > womb.Money {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Сумма, которую вы хотите положить, больше кол-ва денег на вашем счету",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if take == 0 {
+				_, err = replyToMsg(update.Message.MessageID, "блин", update.Message.Chat.ID, bot)
+				return err
+			}
+			if _, err := users.UpdateOne(ctx, bson.M{"_id": womb.ID}, bson.M{
+				"$inc": bson.M{
+					"money": -int(take),
+				},
+			}); err != nil {
+				return err
+			} else if _, err := clans.UpdateOne(ctx, bson.M{"_id": sClan.Tag}, bson.M{
+				"$inc": bson.M{
+					"money": int(take),
+				},
+			}); err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"Вы положили %d Ш в казну. Теперь в казне %d Ш, а у вас %d",
+					take, sClan.Money+take, womb.Money-take,
+				),
+				update.Message.Chat.ID, bot,
+			)
+			if sClan.Leader != womb.ID {
+				_, lerr := sendMsg(
+					fmt.Sprintf("%s положил(а) %d шишей в казну клана", womb.Name, take),
+					sClan.Leader, bot,
+				)
+				if lerr != nil {
+					return lerr
+				}
+			}
+			if sClan.GroupID != update.Message.Chat.ID {
+				_, gerr := sendMsg(
+					fmt.Sprintf("%s положил(а) %d шишей в казну клана", womb.Name, take),
+					sClan.GroupID, bot,
+				)
+				if gerr != nil {
+					return gerr
+				}
+			}
 			return err
 		},
 	},

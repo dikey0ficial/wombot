@@ -2212,7 +2212,7 @@ func main() {
 								fmt.Sprintf(
 									"Настройки клана:\n"+
 										"  доступен_для_входа: %s",
-									b2s(sClan.Settings.AviableToJoin),
+									bool2string(sClan.Settings.AviableToJoin),
 								),
 								peer, bot,
 							)
@@ -2220,7 +2220,7 @@ func main() {
 						switch strings.ToLower(args[2]) {
 						case "доступен_для_входа":
 							if len(args) == 3 {
-								replyToMsg(messID, "доступен_для_входа: "+b2s(sClan.Settings.AviableToJoin), peer, bot)
+								replyToMsg(messID, "доступен_для_входа: "+bool2string(sClan.Settings.AviableToJoin), peer, bot)
 								return
 							} else if ans := strings.ToLower(args[3]); ans == "да" {
 								sClan.Settings.AviableToJoin = true
