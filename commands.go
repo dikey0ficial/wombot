@@ -3459,6 +3459,30 @@ var clanCommands = []command{
 			return err
 		},
 	},
+	{
+		Name: "attack",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "атака"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 1 {
+				_, err := replyToMsg(update.Message.MessageID, "ихецац", update.Message.Chat.ID, bot)
+				return err
+			}
+			var fullArgs = append([]string{"клан"}, args...)
+			for _, cmd := range clanAttackCommands {
+				if cmd.Is(fullArgs, update) {
+					err := cmd.Action(fullArgs, update, womb)
+					if err != nil {
+						err = fmt.Errorf("%s: %v", cmd.Name, err)
+					}
+					return err
+				}
+			}
+			_, err := replyToMsg(update.Message.MessageID, "не знаю такой команды", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
 }
 
 var clanBankCommands = []command{
@@ -3662,6 +3686,162 @@ var clanBankCommands = []command{
 					return gerr
 				}
 			}
+			return err
+		},
+	},
+}
+
+var clanAttackCommands = []command{
+	{
+		Name: "attack",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[2]) == "атака"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			_, err := replyToMsg(
+				update.Message.MessageID,
+				strings.Repeat("атака ", 42),
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "to",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[2]) == "на"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 3 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"Атака на: на кого?",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if len(args) > 4 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"Атака на: слишком много аргументов",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var err error
+			if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вы не состоите ни в одном клане",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вы не являетесь лидером клана, в котором состоите",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var fromClan Clan
+			err = clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&fromClan)
+			if err != nil {
+				return err
+			} else if ok, from := isInClattacks(fromClan.Tag, clattacks); from {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Вы уже нападаете на другой клан",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if ok {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"На вас уже нападают)",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			tag := strings.ToUpper(args[3])
+			if len([]rune(tag)) > 64 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: слишком длинный тег!",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if !isValidTag(tag) {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Нелегальный тег",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if fromClan.Tag == tag {
+				replyToMsg(
+					update.Message.MessageID,
+					"гений",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"_id": tag}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Ошибка: клана с таким тегом не найдено",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if ok, from := isInClattacks(tag, clattacks); from {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Клан ["+tag+"] уже атакует кого-то",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			} else if ok {
+				_, err = replyToMsg(
+					update.Message.MessageID,
+					"Клан ["+tag+"] уже атакуется",
+					update.Message.Chat.ID, bot,
+				)
+				return err
+			}
+			var toClan Clan
+			err = clans.FindOne(ctx, bson.M{"_id": tag}).Decode(&toClan)
+			if err != nil {
+				return err
+			}
+			newClat := Clattack{
+				ID:   fromClan.Tag + "_" + tag,
+				From: fromClan.Tag,
+				To:   tag,
+			}
+			_, err = clattacks.InsertOne(ctx, newClat)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				"Отлично! Вы отправили вомбатов ждать согласия на вомбой",
+				update.Message.Chat.ID, bot,
+			)
+			if err != nil {
+				return err
+			}
+			_, err = sendMsg(
+				"АААА!!! НА ВАС НАПАЛ КЛАН "+fromClan.Tag+". предпримите что-нибудь(",
+				toClan.Leader, bot,
+			)
 			return err
 		},
 	},
