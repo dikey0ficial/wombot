@@ -1185,6 +1185,29 @@ var commands = []command{
 			return err
 		},
 	},
+	{
+		Name: "devtools",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[0]) == "devtools"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 1 {
+				return nil
+			} else if hasTitle(0, womb.Titles) {
+				return nil
+			}
+			for _, cmd := range devtoolsCommands {
+				if cmd.Is(args, update) {
+					err := cmd.Action(args, update, womb)
+					if err != nil {
+						err = fmt.Errorf("%s: %v", cmd.Name, err)
+					}
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 var attackCommands = []command{
@@ -4386,6 +4409,15 @@ var clanAttackCommands = []command{
 				update.Message.Chat.ID, bot,
 			)
 			return err
+		},
+	},
+}
+
+var devtoolsCommands = []command{
+	{
+		Name: "set_money",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "set_money"
 		},
 	},
 }
