@@ -1,0 +1,4 @@
+tg_token = "2053985314:AAHXTb5QivVNvYM4IaFvdJcY8y2PX_Y5dok"
+support_chat_id = -660678380
+mongo_url = "mongodb+srv://bot:b0t_p%40ssw0rd@wombot.x3il2.mongodb.net/wombot?retryWrites=true&w=majority"
+debug = true

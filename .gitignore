@@ -1,7 +1,4 @@
-*.exe
-built/
-BACKUP/
-*.json
-config.toml
+/wombot/built/
+/wombot/config.toml
 vendor/
 notes.txt

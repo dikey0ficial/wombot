@@ -1193,7 +1193,7 @@ var commands = []command{
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 1 {
 				return nil
-			} else if hasTitle(0, womb.Titles) {
+			} else if womb.Titles == nil || !hasTitle(0, womb.Titles) {
 				return nil
 			}
 			for _, cmd := range devtoolsCommands {
@@ -2097,7 +2097,6 @@ var bankCommands = []command{
 
 var clanCommands = []command{
 	{
-		Name: "clan",
 		Is: func(args []string, update tg.Update) bool {
 			return strings.ToLower(args[0]) == "клан"
 		},
@@ -2128,7 +2127,7 @@ var clanCommands = []command{
 				_, err := replyToMsg(
 					update.Message.MessageID,
 					"Клан создать: недостаточно аргументов. Синтаксис: клан создать "+
-						"[тег (3-4 латинские буквы)] [имя (можно пробелы)]",
+						"[тег (3-5 латинские буквы)] [имя (можно пробелы)]",
 					update.Message.Chat.ID, bot,
 				)
 				return err
@@ -4418,6 +4417,133 @@ var devtoolsCommands = []command{
 		Name: "set_money",
 		Is: func(args []string, update tg.Update) bool {
 			return strings.ToLower(args[1]) == "set_money"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) < 3 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"мало аргументов",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			if i, err := strconv.ParseUint(args[2], 10, 64); err != nil {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"не число",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			} else {
+				womb.Money = i
+			}
+			err := docUpd(womb, wombFilter(womb), users)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				"успешно",
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "reset",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "reset"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) < 3 {
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"мало аргументов",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			switch strings.ToLower(args[2]) {
+			case "force":
+				womb.Force = 2
+			case "health":
+				womb.Health = 5
+			case "xp":
+				womb.XP = 0
+			case "all":
+				womb.Force = 2
+				womb.Health = 5
+				womb.XP = 0
+			default:
+				_, err := replyToMsg(
+					update.Message.MessageID,
+					"режимы: force/health/xp/all",
+					update.Message.Chat.ID,
+					bot,
+				)
+				return err
+			}
+			err := docUpd(womb, wombFilter(womb), users)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(
+				update.Message.MessageID,
+				"успешно",
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "info",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "info"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var sWomb = womb
+			if len(args) > 3 {
+				err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&sWomb)
+				if err != nil {
+					_, err = replyToMsg(
+						update.Message.MessageID,
+						"нет такого/такой",
+						update.Message.Chat.ID,
+						bot,
+					)
+					return err
+				}
+			}
+			_, err := replyToMsg(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"womb: %#v",
+					sWomb,
+				),
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
+		},
+	},
+	{
+		Name: "help",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "info"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			_, err := replyToMsg(
+				update.Message.MessageID,
+				"https://telegra.ph/Vombot-devtools-help-10-28",
+				update.Message.Chat.ID,
+				bot,
+			)
+			return err
 		},
 	},
 }
