@@ -84,15 +84,11 @@ func sendMsg(message string, chatID int64, bot *tg.BotAPI) (int, error) {
 }
 
 // sendMsgMD отправляет сообщение с markdown
-func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) int {
+func sendMsgMD(message string, chatID int64, bot *tg.BotAPI) (int, error) {
 	msg := tg.NewMessage(chatID, message)
 	msg.ParseMode = "markdown"
 	mess, err := bot.Send(msg)
-
-	if err != nil {
-		debl.Println(chatID)
-	}
-	return mess.MessageID
+	return mess.MessageID, err
 }
 
 // replyToMsg отвечает обычным сообщением

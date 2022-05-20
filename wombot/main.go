@@ -161,7 +161,6 @@ func main() {
 						update.Message.Text,
 					), peer, bot)
 				}
-
 			}(update, bot)
 			continue
 		}
@@ -4730,7 +4729,7 @@ func main() {
 				}
 				sendMsgMD(strings.Join(args[2:], " "), int64(to), bot)
 				replyToMsg(messID, "Запрос отправлен успешно!", peer, bot)
-			} else if args := strings.Fields(txt); len(args) == 2 && strings.ToLower(args[0]) == "sendmg" {
+			} else if args := strings.Fields(txt); len(args) == 2 && strings.ToLower(args[0]) == "sendphoto" {
 				if !hasTitle(0, womb.Titles) {
 					return
 				}

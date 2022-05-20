@@ -1208,6 +1208,102 @@ var commands = []command{
 			return nil
 		},
 	},
+	// service commands
+	{
+		Name: "send_msg",
+		Is: func(args []string, update tg.Update) bool {
+			s := strings.ToLower(args[0])
+			return s == "sendmsg" || s == "send_msg"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if !hasTitle(3, womb.Titles) {
+				return nil
+			} else if len(args) < 3 {
+				_, err := replyToMsg(update.Message.MessageID, "мало аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			to, err := strconv.Atoi(args[1])
+			if err != nil {
+				_, err = replyToMsg(update.Message.MessageID, "error converting string to int64", update.Message.Chat.ID, bot)
+				return err
+			}
+			_, err = sendMsgMD(strings.Join(args[2:], " "), int64(to), bot)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(update.Message.MessageID, "Запрос отправлен успешно!", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "reply_to_msg",
+		Is: func(args []string, update tg.Update) bool {
+			s := strings.ToLower(args[0])
+			return s == "replytomsg" || s == "reply_to_msg"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if !hasTitle(3, womb.Titles) {
+				return nil
+			} else if len(args) < 4 {
+				_, err := replyToMsg(update.Message.MessageID, "мало аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			sto, err := strconv.Atoi(args[1])
+			if err != nil {
+				_, err = replyToMsg(update.Message.MessageID, "error converting #1 string to int64", update.Message.Chat.ID, bot)
+				return err
+			}
+			rto, err := strconv.Atoi(args[2])
+			if err != nil {
+				_, err = replyToMsg(update.Message.MessageID, "error converting #2 string to int64", update.Message.Chat.ID, bot)
+				return err
+			}
+			_, err = replyToMsgMD(rto, strings.Join(args[2:], " "), int64(sto), bot)
+			if err != nil {
+				return err
+			}
+			_, err = replyToMsg(update.Message.MessageID, "Запрос отправлен успешно!", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "send_photo",
+		Is: func(args []string, update tg.Update) bool {
+			s := strings.ToLower(args[0])
+			return s == "sendphoto" || s == "send_photo"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if !hasTitle(3, womb.Titles) {
+				return nil
+			} else if len(args) < 2 {
+				_, err := replyToMsg(update.Message.MessageID, "мало аргументов", update.Message.Chat.ID, bot)
+				return err
+			}
+			_, err := replyWithPhoto(update.Message.MessageID, args[1], "", update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	{
+		Name: "photo_id",
+		Is: func(args []string, update tg.Update) bool {
+			s := strings.ToLower(args[0])
+			return s == "photoid" || s == "photo_id"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if !hasTitle(3, womb.Titles) {
+				return nil
+			} else if len(update.Message.Photo) == 0 {
+				_, err := replyToMsg(update.Message.MessageID, "нет фотографий", update.Message.Chat.ID, bot)
+				return err
+			}
+			var msg string
+			for _, img := range update.Message.Photo {
+				msg += "`" + img.FileID + "`\n"
+			}
+			_, err := replyToMsgMD(update.Message.MessageID, msg, update.Message.Chat.ID, bot)
+			return err
+		},
+	},
 }
 
 var attackCommands = []command{
