@@ -31,11 +31,7 @@ var commands = []command{
 	{
 		Name: "start",
 		Is: func(args []string, update tg.Update) bool {
-			if strings.ToLower(args[0]) == "/start@"+bot.Self.UserName ||
-				(!isGroup(update.Message) && isInList(args[0], []string{"/start", "/старт"})) {
-				return true
-			}
-			return false
+			return isInList(strings.ToLower(args[0]), []string{"/start", "/start@" + botUserName, "/старт"})
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			const longAnswer = "Доброе утро\n — Завести вомбата: `взять вомбата`\n — Помощь: https://telegra.ph/Pomoshch-10-28 (/help)\n — Канал бота, где есть нужная инфа: @wombatobot_channel\n Приятной игры!"
