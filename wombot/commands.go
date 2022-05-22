@@ -20,6 +20,15 @@ type command struct {
 
 var commands = []command{
 	{
+		Name: "empty_args_check",
+		Is: func(args []string, update tg.Update) bool {
+			return args == nil || len(args) == 0
+		},
+		Action: func([]string, tg.Update, User) error {
+			return nil
+		},
+	},
+	{
 		Name: "start",
 		Is: func(args []string, update tg.Update) bool {
 			if strings.ToLower(args[0]) == "/start@"+bot.Self.UserName ||
@@ -1301,6 +1310,47 @@ var commands = []command{
 				msg += "`" + img.FileID + "`\n"
 			}
 			_, err := replyToMsgMD(update.Message.MessageID, msg, update.Message.Chat.ID, bot)
+			return err
+		},
+	},
+	// support chat processor
+	{
+		Name: "support_chat_checker",
+		Is: func(args []string, update tg.Update) bool {
+			return update.Message.Chat.ID == conf.SupChatID && update.Message.ReplyToMessage != nil && update.Message.ReplyToMessage.From.ID == bot.Self.ID
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
+			omID, err := strconv.ParseInt(strMessID, 10, 64)
+			if err != nil {
+				return err
+			}
+			strPeer := strings.Fields(update.Message.ReplyToMessage.Text)[1]
+			peer, err := strconv.ParseInt(strPeer, 10, 64)
+			if err != nil {
+				return err
+			}
+			if update.Message.From.UserName != "" {
+				_, err = replyToMsgMDNL(
+					int(omID),
+					fmt.Sprintf(
+						"Ответ от [админа](t.me/%s): \n%s",
+						update.Message.From.UserName,
+						update.Message.Text,
+					),
+					peer, bot,
+				)
+			} else {
+				_, err = replyToMsgMD(
+					int(omID),
+					fmt.Sprintf(
+						"Ответ от админа (для обращений: %d): \n%s",
+						update.Message.From.ID,
+						update.Message.Text,
+					),
+					peer, bot,
+				)
+			}
 			return err
 		},
 	},
