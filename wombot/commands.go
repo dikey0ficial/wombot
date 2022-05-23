@@ -20,7 +20,7 @@ type command struct {
 
 var commands = []command{
 	{
-		Name: "incorrect_arguments_check",
+		Name: "bad_message_check",
 		Is: func(args []string, update tg.Update) bool {
 			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil || args == nil || len(args) == 0
 		},
@@ -1136,8 +1136,8 @@ var commands = []command{
 				return err
 			}
 			for _, cmd := range attackCommands {
-				if cmd.Is(args[1:], update) {
-					err := cmd.Action(args, update, womb) //@TODO: проверить, надо ли добавить [1:]
+				if cmd.Is(args, update) {
+					err := cmd.Action(args, update, womb)
 					if err != nil {
 						err = fmt.Errorf("%s: %v", cmd.Name, err)
 					}
@@ -1182,7 +1182,7 @@ var commands = []command{
 				return err
 			}
 			for _, cmd := range clanCommands {
-				if cmd.Is(args[1:], update) {
+				if cmd.Is(args, update) {
 					err := cmd.Action(args, update, womb)
 					if err != nil {
 						err = fmt.Errorf("%s: %v", cmd.Name, err)
@@ -1360,7 +1360,7 @@ var attackCommands = []command{
 	{
 		Name: "attack",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "атака"
+			return strings.ToLower(args[1]) == "атака"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			_, err := replyToMsg(update.Message.MessageID, strings.Repeat("атака ", 42), update.Message.Chat.ID, bot)
@@ -1370,7 +1370,7 @@ var attackCommands = []command{
 	{
 		Name: "status",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "статус"
+			return strings.ToLower(args[1]) == "статус"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -1443,7 +1443,7 @@ var attackCommands = []command{
 	{
 		Name: "to",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "на"
+			return strings.ToLower(args[1]) == "на"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -1613,7 +1613,7 @@ var attackCommands = []command{
 	{
 		Name: "cancel",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "отмена"
+			return strings.ToLower(args[1]) == "отмена"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -1685,7 +1685,7 @@ var attackCommands = []command{
 	{
 		Name: "acccept",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "принять"
+			return strings.ToLower(args[1]) == "принять"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if isGroup(update.Message) {
@@ -2244,7 +2244,7 @@ var bankCommands = []command{
 var clanCommands = []command{
 	{
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "клан"
+			return strings.ToLower(args[1]) == "клан"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			_, err := replyToMsg(update.Message.MessageID, strings.Repeat("атака ", 42), update.Message.Chat.ID, bot)
@@ -2254,7 +2254,7 @@ var clanCommands = []command{
 	{
 		Name: "new",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "создать"
+			return strings.ToLower(args[1]) == "создать"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2384,7 +2384,7 @@ var clanCommands = []command{
 	{
 		Name: "join",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "вступить"
+			return strings.ToLower(args[1]) == "вступить"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2500,7 +2500,7 @@ var clanCommands = []command{
 	{
 		Name: "set_user",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "назначить"
+			return strings.ToLower(args[1]) == "назначить"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 2 {
@@ -2613,7 +2613,7 @@ var clanCommands = []command{
 	{
 		Name: "transfer",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "передать"
+			return strings.ToLower(args[1]) == "передать"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2738,7 +2738,7 @@ var clanCommands = []command{
 	{
 		Name: "quit",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "выйти"
+			return strings.ToLower(args[1]) == "выйти"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2853,7 +2853,7 @@ var clanCommands = []command{
 	{
 		Name: "status",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "статус"
+			return strings.ToLower(args[1]) == "статус"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) > 3 {
@@ -2976,7 +2976,7 @@ var clanCommands = []command{
 	{
 		Name: "award",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "награда"
+			return strings.ToLower(args[1]) == "награда"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -3049,7 +3049,7 @@ var clanCommands = []command{
 	{
 		Name: "rating",
 		Is: func(args []string, update tg.Update) bool {
-			lowarg := strings.ToLower(args[0])
+			lowarg := strings.ToLower(args[1])
 			return lowarg == "рейтинг" || lowarg == "топ"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
@@ -3134,7 +3134,7 @@ var clanCommands = []command{
 	{
 		Name: "list_banned",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "забаненные"
+			return strings.ToLower(args[1]) == "забаненные"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -3184,7 +3184,7 @@ var clanCommands = []command{
 	{
 		Name: "kick",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "кик"
+			return strings.ToLower(args[1]) == "кик"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 2 {
@@ -3278,7 +3278,7 @@ var clanCommands = []command{
 	{
 		Name: "ban",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "бан"
+			return strings.ToLower(args[1]) == "бан"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 2 {
@@ -3374,7 +3374,7 @@ var clanCommands = []command{
 	{
 		Name: "unban",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "разбан"
+			return strings.ToLower(args[1]) == "разбан"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 2 {
@@ -3444,7 +3444,7 @@ var clanCommands = []command{
 	{
 		Name: "rename",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "переименовать"
+			return strings.ToLower(args[1]) == "переименовать"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) < 3 {
@@ -3514,7 +3514,7 @@ var clanCommands = []command{
 	{
 		Name: "settings",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "настройки"
+			return strings.ToLower(args[1]) == "настройки"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) > 4 {
@@ -3606,17 +3606,16 @@ var clanCommands = []command{
 	{
 		Name: "bank",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "казна"
+			return strings.ToLower(args[1]) == "казна"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 1 {
 				_, err := replyToMsg(update.Message.MessageID, "жесь", update.Message.Chat.ID, bot)
 				return err
 			}
-			var fullArgs = append([]string{"клан"}, args...)
 			for _, cmd := range clanBankCommands {
-				if cmd.Is(fullArgs, update) {
-					err := cmd.Action(fullArgs, update, womb)
+				if cmd.Is(args, update) {
+					err := cmd.Action(args, update, womb)
 					if err != nil {
 						err = fmt.Errorf("%s: %v", cmd.Name, err)
 					}
@@ -3630,17 +3629,16 @@ var clanCommands = []command{
 	{
 		Name: "attack",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "атака"
+			return strings.ToLower(args[1]) == "атака"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 1 {
 				_, err := replyToMsg(update.Message.MessageID, "ихецац", update.Message.Chat.ID, bot)
 				return err
 			}
-			var fullArgs = append([]string{"клан"}, args...)
 			for _, cmd := range clanAttackCommands {
-				if cmd.Is(fullArgs, update) {
-					err := cmd.Action(fullArgs, update, womb)
+				if cmd.Is(args, update) {
+					err := cmd.Action(args, update, womb)
 					if err != nil {
 						err = fmt.Errorf("%s: %v", cmd.Name, err)
 					}
