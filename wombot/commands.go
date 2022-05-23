@@ -524,12 +524,12 @@ var commands = []command{
 				return err
 			}
 			if !isInUsers {
-				_, err = replyToMsg(update.Message.MessageID, "А ты куда? У тебя вомбата нет...", update.Message.From.ID, bot)
+				_, err = replyToMsg(update.Message.MessageID, "А ты куда? У тебя вомбата нет...", update.Message.Chat.ID, bot)
 				return err
 			}
 
 			if womb.Money < 1 {
-				_, err = replyToMsg(update.Message.MessageID, "Охранники тебя прогнали; они требуют шиш за проход, а у тебя ни шиша нет", update.Message.From.ID, bot)
+				_, err = replyToMsg(update.Message.MessageID, "Охранники тебя прогнали; они требуют шиш за проход, а у тебя ни шиша нет", update.Message.Chat.ID, bot)
 				return err
 			}
 			womb.Money--
@@ -545,14 +545,14 @@ var commands = []command{
 							"Поздравляем! Вы нашли на дороге %d шишей, а ещё вам дали %d XP! Теперь у вас %d шишей при себе и %d XP",
 							win, addXP, womb.Money, womb.XP,
 						),
-						update.Message.From.ID, bot,
+						update.Message.Chat.ID, bot,
 					)
 				} else {
 					_, err = replyToMsg(update.Message.MessageID,
 						fmt.Sprintf(
 							"Поздравляем! Вы нашли на дороге %d шишей! Теперь их у вас при себе %d", win, womb.Money,
 						),
-						update.Message.From.ID, bot,
+						update.Message.Chat.ID, bot,
 					)
 				}
 				if err != nil {
@@ -561,7 +561,7 @@ var commands = []command{
 			} else {
 				_, err = replyToMsg(
 					update.Message.MessageID, "Вы заплатили один шиш охранникам денежной дорожки, но увы, вы так ничего и не нашли",
-					update.Message.From.ID, bot,
+					update.Message.Chat.ID, bot,
 				)
 				if err != nil {
 					return err
