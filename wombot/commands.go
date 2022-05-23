@@ -20,7 +20,7 @@ type command struct {
 
 var commands = []command{
 	{
-		Name: "bad_message_check",
+		Name: "bad_update_check",
 		Is: func(args []string, update tg.Update) bool {
 			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil || args == nil || len(args) == 0
 		},
@@ -3609,7 +3609,7 @@ var clanCommands = []command{
 			return strings.ToLower(args[1]) == "казна"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			if len(args) == 1 {
+			if len(args) == 2 {
 				_, err := replyToMsg(update.Message.MessageID, "жесь", update.Message.Chat.ID, bot)
 				return err
 			}
@@ -3632,7 +3632,7 @@ var clanCommands = []command{
 			return strings.ToLower(args[1]) == "атака"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			if len(args) == 1 {
+			if len(args) == 2 {
 				_, err := replyToMsg(update.Message.MessageID, "ихецац", update.Message.Chat.ID, bot)
 				return err
 			}
