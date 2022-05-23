@@ -706,13 +706,13 @@ var commands = []command{
 				fallthrough
 			case "вадшам":
 				if len(args) != 2 {
-					_, err = replyToMsg(update.Message.MessageID, "ужас !! слишком много аргументов!!!", update.Message.From.ID, bot)
+					_, err = replyToMsg(update.Message.MessageID, "ужас !! слишком много аргументов!!!", update.Message.Chat.ID, bot)
 					return err
 				} else if hasTitle(4, womb.Titles) {
-					_, err = replyToMsg(update.Message.MessageID, "у вас уже есть вадшам", update.Message.From.ID, bot)
+					_, err = replyToMsg(update.Message.MessageID, "у вас уже есть вадшам", update.Message.Chat.ID, bot)
 					return err
 				} else if womb.Money < 250005 {
-					_, err = replyToMsg(update.Message.MessageID, "Ошибка: недостаточно шишей для покупки (требуется 250000 + 5)", update.Message.From.ID, bot)
+					_, err = replyToMsg(update.Message.MessageID, "Ошибка: недостаточно шишей для покупки (требуется 250000 + 5)", update.Message.Chat.ID, bot)
 					return err
 				}
 				womb.Money -= 250000
@@ -721,7 +721,7 @@ var commands = []command{
 				if err != nil {
 					return err
 				}
-				_, err = replyToMsg(update.Message.MessageID, "Теперь вы вадшамообладатель", update.Message.From.ID, bot)
+				_, err = replyToMsg(update.Message.MessageID, "Теперь вы вадшамообладатель", update.Message.Chat.ID, bot)
 			case "квес":
 				fallthrough
 			case "квеса":
@@ -730,7 +730,7 @@ var commands = []command{
 				fallthrough
 			case "qwess":
 				if len(args) != 2 {
-					_, err = replyToMsg(update.Message.MessageID, "Слишком много аргументов!", update.Message.From.ID, bot)
+					_, err = replyToMsg(update.Message.MessageID, "Слишком много аргументов!", update.Message.Chat.ID, bot)
 					return err
 				} else if womb.Money < 256 {
 					leps, err := getImgs(imgsC, "leps")
@@ -740,7 +740,7 @@ var commands = []command{
 					_, err = replyWithPhoto(update.Message.MessageID,
 						randImg(leps),
 						"Вы подошли к ближайшему ларьку, но, увы, кролик-Лепс на кассе сказал, что надо 256 шишей, а у вас, к сожалению, меньше",
-						update.Message.From.ID, bot,
+						update.Message.Chat.ID, bot,
 					)
 					return err
 				}
@@ -758,7 +758,7 @@ var commands = []command{
 					_, err = replyWithPhoto(update.Message.MessageID,
 						randImg(qwess),
 						"Вы купили чудесного вкуса квес у кролика-Лепса в ларьке за 256 шишей. Глотнув этот напиток, вы поняли, что получили новый титул с ID 2",
-						update.Message.From.ID, bot,
+						update.Message.Chat.ID, bot,
 					)
 				} else {
 					womb.Money -= 256
@@ -772,12 +772,12 @@ var commands = []command{
 					_, err = replyWithPhoto(update.Message.MessageID,
 						randImg(qwess),
 						"Вы вновь купили вкусного квеса у того же кролика-Лепса в том же ларьке за 256 шишей. \"Он так освежает, я чувствую себя человеком\" — думаете вы. Ах, как вкусён квес!",
-						update.Message.From.ID, bot,
+						update.Message.Chat.ID, bot,
 					)
 					return err
 				}
 			default:
-				_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Что такое %s?", args[1]), update.Message.From.ID, bot)
+				_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Что такое %s?", args[1]), update.Message.Chat.ID, bot)
 				return err
 			}
 			return nil
