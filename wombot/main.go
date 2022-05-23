@@ -98,7 +98,8 @@ func init() {
 
 func main() {
 	// init
-	bot, err := tg.NewBotAPI(conf.Token)
+	var err error
+	bot, err = tg.NewBotAPI(conf.Token)
 	checkerr(err)
 
 	u := tg.NewUpdate(0)
@@ -126,26 +127,25 @@ func main() {
 			}()
 			var args = make([]string, 0)
 			var womb = User{}
-			debl.Println("!")
 			if update.Message != nil {
 				args = strings.Fields(update.Message.Text)
 				// ignoring error because yes
 				_ = users.FindOne(ctx, bson.M{"_id": update.Message.From.ID}).Decode(&womb)
 			}
-			debl.Println("!")
 			for _, cmd := range commands {
-				debl.Println(cmd.Name)
 				if cmd.Is(args, update) {
 					cmdName := cmd.Name
-					debl.Println(cmdName)
 					err := cmd.Action(args, update, womb)
 					if err != nil {
 						errl.Printf("%s: %v", cmdName, err)
-						_, err = replyToMsg(
-							update.Message.MessageID,
-							"Произошла ошибка... ответьте на это сообщение командой /admin",
-							update.Message.Chat.ID, bot,
-						)
+						var mErr error
+						for i := 0; i < 3 && mErr != nil; i++ {
+							_, mErr = replyToMsg(
+								update.Message.MessageID,
+								"Произошла ошибка... ответьте на это сообщение командой /admin",
+								update.Message.Chat.ID, bot,
+							)
+						}
 					}
 					break
 				}

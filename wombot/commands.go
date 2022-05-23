@@ -20,9 +20,9 @@ type command struct {
 
 var commands = []command{
 	{
-		Name: "empty_args_check",
+		Name: "incorrect_arguments_check",
 		Is: func(args []string, update tg.Update) bool {
-			return args == nil || len(args) == 0
+			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil || args == nil || len(args) == 0
 		},
 		Action: func([]string, tg.Update, User) error {
 			return nil
@@ -39,6 +39,10 @@ var commands = []command{
 				_, err := replyToMsg(update.Message.MessageID, "Доброе утро! ((большинство комманд вомбота доступны только в лс))", update.Message.Chat.ID, bot)
 				return err
 			}
+			debl.Println("messid", update.Message.MessageID)
+			debl.Println("msg", longAnswer)
+			debl.Println("peer", update.Message.Chat.ID)
+			debl.Println("bot", bot)
 			_, err := replyToMsg(update.Message.MessageID, longAnswer, update.Message.Chat.ID, bot)
 			return err
 		},
@@ -62,7 +66,7 @@ var commands = []command{
 		Is: func(args []string, update tg.Update) bool {
 			if len(args) != 2 {
 				return false
-			} else if strings.ToLower(args[0]+" "+args[1]) == "о вомбате" {
+			} else if strings.ToLower(args[0]+" "+args[1]) == "о вомботе" {
 				return true
 			}
 			return false
