@@ -2998,7 +2998,7 @@ var clanCommands = []command{
 				return err
 			}
 			var sClan Clan
-			if err := clans.FindOne(ctx, bson.M{"members": update.Message.MessageID}).Decode(&sClan); err != nil {
+			if err := clans.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&sClan); err != nil {
 				return err
 			}
 			if !(update.Message.From.ID == sClan.Leader || update.Message.From.ID == sClan.Banker) {
