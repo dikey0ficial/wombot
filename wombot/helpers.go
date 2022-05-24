@@ -12,17 +12,6 @@ import (
 	"time"
 )
 
-// because it somewhy failes
-var botUserName = func() (x string) {
-	defer func() {
-		if e := recover(); e != nil {
-			x = "wombatobot"
-		}
-	}()
-	x = bot.Self.UserName
-	return
-}()
-
 // checkerr реализует проверку ошибок без паники
 func checkerr(err error) {
 	if err != nil && err.Error() != "EOF" {
