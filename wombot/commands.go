@@ -580,7 +580,7 @@ var commands = []command{
 				" — квес — 256 ш", " — вадшам — 250'000 ш",
 				"Для покупки использовать команду 'купить [название_объекта] ([кол-во])",
 			}, "\n"),
-				update.Message.From.ID, bot,
+				update.Message.Chat.ID, bot,
 			)
 			return err
 		},
@@ -624,30 +624,28 @@ var commands = []command{
 						return err
 					}
 				}
-				if womb.Money >= uint64(amount*5) {
-					if uint64(womb.Health+amount) < uint64(math.Pow(2, 32)) {
-						womb.Money -= uint64(amount * 5)
-						womb.Health += amount
-						err = docUpd(womb, wombFilter(womb), users)
-						if err != nil {
-							return err
-						}
-						_, err = replyToMsg(update.Message.MessageID,
-							fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей при себе", womb.Health, womb.Money),
-							update.Message.Chat.ID, bot,
-						)
-						return err
-					} else {
-						_, err = replyToMsg(update.Message.MessageID,
-							"Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
-							update.Message.Chat.ID, bot,
-						)
-						return err
-					}
-				} else {
+				if womb.Money < uint64(amount)*5 {
 					_, err = replyToMsg(update.Message.MessageID, "Надо накопить побольше шишей! 1 здоровье = 5 шишей", update.Message.Chat.ID, bot)
 					return err
 				}
+				if uint64(womb.Health+amount) > uint64(math.Pow(2, 32)) {
+					_, err = replyToMsg(update.Message.MessageID,
+						"Ошибка: вы достигли максимального количества здоровья (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
+						update.Message.Chat.ID, bot,
+					)
+					return err
+				}
+				womb.Money -= uint64(amount) * 5
+				womb.Health += amount
+				err = docUpd(womb, wombFilter(womb), users)
+				if err != nil {
+					return err
+				}
+				_, err = replyToMsg(update.Message.MessageID,
+					fmt.Sprintf("Поздравляю! Теперь у вас %d здоровья и %d шишей при себе", womb.Health, womb.Money),
+					update.Message.Chat.ID, bot,
+				)
+				return err
 			case "силу":
 				fallthrough
 			case "сила":
@@ -658,7 +656,7 @@ var commands = []command{
 				fallthrough
 			case "мощь":
 				if len(args) > 3 {
-					_, err = replyToMsg(update.Message.MessageID, "Ошибка: слишком много аргументов...", update.Message.Chat.ID, bot)
+					_, err := replyToMsg(update.Message.MessageID, "Ошибка: слишком много аргументов...", update.Message.Chat.ID, bot)
 					return err
 				}
 				var amount uint32 = 1
@@ -674,25 +672,25 @@ var commands = []command{
 						return err
 					}
 				}
-				if womb.Money < uint64(amount*3) {
+				if womb.Money < uint64(amount)*3 {
+					_, err = replyToMsg(update.Message.MessageID, "Надо накопить побольше шишей! 1 мощь = 3 шишв", update.Message.Chat.ID, bot)
+					return err
+				}
+				if uint64(womb.Force+amount) > uint64(math.Pow(2, 32)) {
 					_, err = replyToMsg(update.Message.MessageID,
 						"Ошибка: вы достигли максимального количества мощи (2 в 32 степени). Если это вас возмущает, ответьте командой /admin",
 						update.Message.Chat.ID, bot,
 					)
 					return err
 				}
-				if uint64(womb.Force+1) < uint64(math.Pow(2, 32)) {
-					_, err = replyToMsg(update.Message.MessageID, "Надо накопить побольше шишей! 1 мощь = 3 шиша", update.Message.Chat.ID, bot)
-					return err
-				}
-				womb.Money -= uint64(amount * 3)
+				womb.Money -= uint64(amount) * 3
 				womb.Force += amount
 				err = docUpd(womb, wombFilter(womb), users)
 				if err != nil {
 					return err
 				}
 				_, err = replyToMsg(update.Message.MessageID,
-					fmt.Sprintf("Поздравляю! Теперь у вас %d мощи и %d шишей при себе", womb.Force, womb.Money),
+					fmt.Sprintf("Поздравляю! Теперь у вас %d силы и %d шишей при себе", womb.Force, womb.Money),
 					update.Message.Chat.ID, bot,
 				)
 				return err
