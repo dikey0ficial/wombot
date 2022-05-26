@@ -1153,7 +1153,7 @@ var commands = []command{
 				return err
 			}
 			for _, cmd := range bankCommands {
-				if cmd.Is(args[1:], update) {
+				if cmd.Is(args, update) {
 					err := cmd.Action(args, update, womb)
 					if err != nil {
 						err = fmt.Errorf("%s: %v", cmd.Name, err)
@@ -1975,7 +1975,7 @@ var bankCommands = []command{
 	{
 		Name: "wombank",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "вомбанк"
+			return strings.ToLower(args[1]) == "вомбанк"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			_, err := replyToMsg(update.Message.MessageID, strings.Repeat("вомбанк ", 42), update.Message.Chat.ID, bot)
@@ -1985,7 +1985,7 @@ var bankCommands = []command{
 	{
 		Name: "new",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "начать"
+			return strings.ToLower(args[1]) == "начать"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2025,7 +2025,7 @@ var bankCommands = []command{
 	{
 		Name: "put",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "положить"
+			return strings.ToLower(args[1]) == "положить"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2091,7 +2091,7 @@ var bankCommands = []command{
 	{
 		Name: "take",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "снять"
+			return strings.ToLower(args[1]) == "снять"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -2161,7 +2161,7 @@ var bankCommands = []command{
 	{
 		Name: "status",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[0]) == "статус"
+			return strings.ToLower(args[1]) == "статус"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			var (
