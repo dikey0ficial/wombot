@@ -1449,10 +1449,10 @@ var attackCommands = []command{
 			if err != nil {
 				return err
 			}
-			if len(args) < 2 {
+			if len(args) < 3 {
 				_, err = replyToMsg(update.Message.MessageID, "Атака на: на кого?", update.Message.Chat.ID, bot)
 				return err
-			} else if len(args) != 2 {
+			} else if len(args) > 3 {
 				_, err = replyToMsg(update.Message.MessageID, "Атака на: слишком много аргументов", update.Message.Chat.ID, bot)
 				return err
 			} else if !isInUsers {
@@ -1462,7 +1462,7 @@ var attackCommands = []command{
 				_, err = replyToMsg(update.Message.MessageID, "Но вы же спите...", update.Message.Chat.ID, bot)
 				return err
 			}
-			strID := args[1]
+			strID := args[2]
 			var (
 				ID    int64
 				tWomb User
@@ -1531,7 +1531,10 @@ var attackCommands = []command{
 			if err != nil {
 				return err
 			}
-			if tWomb.Sleep {
+			if tWomb.ID == womb.ID {
+				_, err = replyToMsg(update.Message.MessageID, "„Главная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", update.Message.From.ID, bot)
+				return err
+			} else if tWomb.Sleep {
 				_, err = replyToMsg(
 					update.Message.MessageID,
 					fmt.Sprintf(
@@ -1619,7 +1622,7 @@ var attackCommands = []command{
 			if err != nil {
 				return err
 			}
-			if len(args) > 1 {
+			if len(args) > 2 {
 				_, err = replyToMsg(update.Message.MessageID, "атака отмена: слишком много аргументов", update.Message.Chat.ID, bot)
 				return err
 			} else if !isInUsers {
