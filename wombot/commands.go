@@ -78,7 +78,7 @@ var commands = []command{
 	{
 		Name: "about_wombat",
 		Is: func(args []string, update tg.Update) bool {
-			if strings.HasPrefix(strings.Join(args, " "), "о вомбате") {
+			if strings.HasPrefix(strings.ToLower(strings.Join(args, " ")), "о вомбате") {
 				return true
 			}
 			return false
