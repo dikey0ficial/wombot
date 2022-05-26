@@ -444,7 +444,7 @@ var commands = []command{
 		Is: func(args []string, update tg.Update) bool {
 			return strings.HasPrefix(
 				strings.ToLower(strings.Join(args, " ")),
-				"сменить имя",
+				"поменять имя",
 			)
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
