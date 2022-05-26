@@ -2118,7 +2118,7 @@ var bankCommands = []command{
 				return err
 			}
 			var num uint64
-			if num, err = strconv.ParseUint(args[2], 10, 64); err != nil {
+			if num, err = strconv.ParseUint(args[2], 10, 64); err == nil {
 				if num == 0 {
 					_, err = replyToMsg(update.Message.MessageID, "Ну и зачем?", update.Message.Chat.ID, bot)
 					return err
@@ -2130,6 +2130,7 @@ var bankCommands = []command{
 				}
 				num = b.Money
 			} else {
+				debl.Println(num, err)
 				_, err = replyToMsg(update.Message.MessageID, "Вомбанк снять: требуется целое неотрицательное число шишей до 2^64", update.Message.Chat.ID, bot)
 				return err
 			}
