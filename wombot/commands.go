@@ -1039,7 +1039,7 @@ var commands = []command{
 	{
 		Name: "rating",
 		Is: func(args []string, update tg.Update) bool {
-			return isPrefixInList(strings.ToLower(strings.Join(args, " ")), []string{"рейтинг", "топ"}) && args[0] != "рейтинг" && args[0] != "топ"
+			return strings.ToLower(args[0]) == "рейтинг" || strings.ToLower(args[0]) == "топ"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			var (
