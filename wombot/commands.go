@@ -39,10 +39,6 @@ var commands = []command{
 				_, err := replyToMsg(update.Message.MessageID, "Доброе утро! ((большинство комманд вомбота доступны только в лс))", update.Message.Chat.ID, bot)
 				return err
 			}
-			debl.Println("messid", update.Message.MessageID)
-			debl.Println("msg", longAnswer)
-			debl.Println("peer", update.Message.Chat.ID)
-			debl.Println("bot", bot)
 			_, err := replyToMsg(update.Message.MessageID, longAnswer, update.Message.Chat.ID, bot)
 			return err
 		},
@@ -4680,7 +4676,7 @@ var devtoolsCommands = []command{
 	{
 		Name: "help",
 		Is: func(args []string, update tg.Update) bool {
-			return strings.ToLower(args[1]) == "info"
+			return strings.ToLower(args[1]) == "help"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			_, err := replyToMsg(
