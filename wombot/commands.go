@@ -1376,30 +1376,31 @@ var attackCommands = []command{
 				return err
 			}
 			var ID int64
-			if len(args) == 1 {
+			if len(args) == 2 {
 				if !isInUsers {
 					_, err = replyToMsg(update.Message.MessageID, "Но у вас вомбата нет...", update.Message.Chat.ID, bot)
 					return err
 				}
 				ID = int64(update.Message.From.ID)
-			} else if len(args) > 2 {
+			} else if len(args) > 3 {
 				_, err = replyToMsg(update.Message.MessageID, "Атака статус: слишком много аргументов", update.Message.Chat.ID, bot)
 				return err
+			} else {
+				strID := args[2]
+				if rCount, err := users.CountDocuments(ctx,
+					bson.M{"name": cins(strID)}); err != nil {
+					return err
+				} else if rCount == 0 {
+					_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Пользователя с никнеймом `%s` не найдено", strID), update.Message.Chat.ID, bot)
+					return err
+				}
+				var tWomb User
+				err = users.FindOne(ctx, bson.M{"name": cins(strID)}).Decode(&tWomb)
+				if err != nil {
+					return err
+				}
+				ID = tWomb.ID
 			}
-			strID := args[1]
-			if rCount, err := users.CountDocuments(ctx,
-				bson.M{"name": cins(strID)}); err != nil {
-				return err
-			} else if rCount == 0 {
-				_, err = replyToMsg(update.Message.MessageID, fmt.Sprintf("Пользователя с никнеймом `%s` не найдено", strID), update.Message.Chat.ID, bot)
-				return err
-			}
-			var tWomb User
-			err = users.FindOne(ctx, bson.M{"name": cins(strID)}).Decode(&tWomb)
-			if err != nil {
-				return err
-			}
-			ID = tWomb.ID
 			var at Attack
 			if is, isFrom := isInAttacks(ID, attacks); isFrom {
 				a, err := getAttackByWomb(ID, true, attacks)
@@ -1414,7 +1415,7 @@ var attackCommands = []command{
 				}
 				at = a
 			} else {
-				_, err = replyToMsg(update.Message.MessageID, "Атак нет", update.Message.Chat.ID, bot)
+				_, err = replyToMsg(update.Message.MessageID, "У этого вомбата атак нет", update.Message.Chat.ID, bot)
 				return err
 			}
 			var fromWomb, toWomb User
