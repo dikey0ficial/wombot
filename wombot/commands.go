@@ -3582,7 +3582,7 @@ var clanCommands = []command{
 			default:
 				_, err = replyToMsg(
 					update.Message.MessageID,
-					fmt.Sprintf("Настройка с именем `%s не обнаружена", strings.ToLower(args[2])),
+					"Настройка с такимименем не обнаружена",
 					update.Message.Chat.ID, bot,
 				)
 				return err
