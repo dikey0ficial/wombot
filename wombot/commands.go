@@ -4455,8 +4455,8 @@ var clanAttackCommands = []command{
 				sClan Clan
 				err   error
 			)
-			switch len(args) - 3 {
-			case 0:
+			switch len(args) {
+			case 3:
 				isInUsers, err := getIsInUsers(update.Message.From.ID)
 				if !isInUsers {
 					_, err = replyToMsg(
@@ -4479,8 +4479,8 @@ var clanAttackCommands = []command{
 				if err := clans.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&sClan); err != nil {
 					return err
 				}
-			case 1:
-				tag := strings.ToUpper(args[4])
+			case 4:
+				tag := strings.ToUpper(args[3])
 				if len(tag) < 3 || len(tag) > 5 {
 					_, err = replyToMsg(update.Message.MessageID, "Некорректный тег", update.Message.Chat.ID, bot)
 					return err
@@ -4503,8 +4503,9 @@ var clanAttackCommands = []command{
 				return err
 			}
 			var (
-				is   bool
-				isfr bool
+				is            bool
+				isfr          bool
+				sClanPosition string = "to"
 			)
 			if is, isfr = isInClattacks(sClan.Tag, clattacks); !is {
 				_, err = replyToMsg(
@@ -4514,39 +4515,23 @@ var clanAttackCommands = []command{
 				)
 				return err
 			}
-			var sClat Clattack
-			if err := clans.FindOne(ctx, bson.M{
-				func() string {
-					if isfr {
-						return "from"
-					}
-					return "to"
-				}(): sClan.Tag,
-			}).Decode(&sClat); err != nil {
-				return err
+			if isfr {
+				sClanPosition = "from"
 			}
-			var tocl, frcl Clan
-			if err := clans.FindOne(ctx, bson.M{"_id": func() string {
-				if isfr {
-					return sClat.To
-				}
-				return sClat.From
-			}()}).Decode(func() *Clan {
-				if isfr {
-					frcl = sClan
-					return &tocl
-				}
-				tocl = sClan
-				return &frcl
-			}()); err != nil {
+			var (
+				sClat Clattack
+			)
+			if err := clattacks.FindOne(ctx, bson.M{
+				sClanPosition: sClan.Tag,
+			}).Decode(&sClat); err != nil {
 				return err
 			}
 			_, err = replyToMsg(
 				update.Message.MessageID,
 				fmt.Sprintf(
-					"От: [%s] %s\nНа: [%s] %s",
-					frcl.Tag, frcl.Name,
-					tocl.Tag, tocl.Name,
+					"От: [%s]\nНа: [%s]",
+					sClat.From,
+					sClat.To,
 				),
 				update.Message.Chat.ID, bot,
 			)
