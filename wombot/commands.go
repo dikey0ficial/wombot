@@ -4163,7 +4163,7 @@ var clanAttackCommands = []command{
 			}
 			var err error
 			if rCount, err := clans.CountDocuments(ctx,
-				bson.M{"leader": update.Message.MessageID}); err != nil {
+				bson.M{"leader": update.Message.From.ID}); err != nil {
 				return err
 			} else if rCount == 0 {
 				_, err = replyToMsg(
