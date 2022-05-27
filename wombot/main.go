@@ -138,14 +138,11 @@ func main() {
 					err := cmd.Action(args, update, womb)
 					if err != nil {
 						errl.Printf("%s: %v", cmdName, err)
-						var mErr error
-						for i := 0; i < 3 && mErr != nil; i++ {
-							_, mErr = replyToMsg(
-								update.Message.MessageID,
-								"Произошла ошибка... ответьте на это сообщение командой /admin",
-								update.Message.Chat.ID, bot,
-							)
-						}
+						replyToMsg(
+							update.Message.MessageID,
+							"Произошла ошибка... ответьте на это сообщение командой /admin",
+							update.Message.Chat.ID, bot,
+						)
 					}
 					break
 				}
