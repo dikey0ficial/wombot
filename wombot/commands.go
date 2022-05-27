@@ -3409,7 +3409,7 @@ var clanCommands = []command{
 				sClan Clan
 				kWomb User
 			)
-			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.MessageID}).Decode(&sClan); err != nil {
+			if err := clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&sClan); err != nil {
 				return err
 			}
 			if err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&kWomb); err != nil {
