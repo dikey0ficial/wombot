@@ -12,13 +12,6 @@ import (
 	"time"
 )
 
-// checkerr реализует проверку ошибок без паники
-func checkerr(err error) {
-	if err != nil && err.Error() != "EOF" {
-		errl.Printf("e: %v\n", err)
-	}
-}
-
 // isInList нужен для проверки сообщений
 func isInList(str string, list []string) bool {
 	for _, elem := range list {

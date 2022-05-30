@@ -81,7 +81,6 @@ func init() {
 	cur, err := titlesC.Find(ctx, bson.M{})
 	if err != nil {
 		errl.Println(err)
-		os.Exit(1)
 	}
 	defer cur.Close(ctx)
 	for cur.Next(ctx) {
@@ -100,12 +99,16 @@ func main() {
 	// init
 	var err error
 	bot, err = tg.NewBotAPI(conf.Token)
-	checkerr(err)
+	if err != nil {
+		panic(err)
+	}
 
 	u := tg.NewUpdate(0)
 	u.Timeout = 1
 	updates := bot.GetUpdatesChan(u)
-	checkerr(err)
+	if err != nil {
+		panic(err)
+	}
 	var wg = sync.WaitGroup{}
 
 	defer func() {
@@ -117,7 +120,7 @@ func main() {
 
 	for update := range updates {
 		wg.Add(1)
-		go func() {
+		go func(update tg.Update) {
 			defer wg.Done()
 			var cmdName string = "-"
 			defer func() {
@@ -147,7 +150,7 @@ func main() {
 					break
 				}
 			}
-		}()
+		}(update)
 	}
 
 }
