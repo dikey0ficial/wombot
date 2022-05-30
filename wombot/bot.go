@@ -49,7 +49,7 @@ func (b Bot) ReplyWithMessage(messID int, message string, chatID int64, options 
 
 type PhotoOption func(*tg.PhotoConfig) error
 
-func MarkdownParseModePhoto(msg *tg.MessageConfig) error {
+func MarkdownParseModePhoto(msg *tg.PhotoConfig) error {
 	msg.ParseMode = "markdown"
 	return nil
 }
@@ -74,4 +74,16 @@ func (b Bot) SendPhoto(id string, caption string, chatID int64, options ...Photo
 
 func (b Bot) ReplyWithPhoto(messID int, id, caption string, chatID int64, options ...PhotoOption) (int, error) {
 	return b.SendPhoto(id, caption, chatID, append(options, PhotoSetReply(messID))...)
+}
+
+func (b Bot) EditMessage(messID int, newText string, chatID int64) error {
+	editConfig := tg.EditMessageTextConfig{
+		BaseEdit: tg.BaseEdit{
+			ChatID:    chatID,
+			MessageID: messID,
+		},
+		Text: newText,
+	}
+	_, err := bot.Request(editConfig)
+	return err
 }

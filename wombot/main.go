@@ -24,7 +24,7 @@ var (
 		MongoURL  string `toml:"mongo_url" env:"MONGOURL"`
 		SupChatID int64  `toml:"support_chat_id" env:"SUPCHATID"`
 	}{}
-	bot *tg.BotAPI
+	bot Bot
 
 	mongoClient                            *mongo.Client
 	db                                     *mongo.Database
@@ -98,7 +98,7 @@ func init() {
 func main() {
 	// init
 	var err error
-	bot, err = tg.NewBotAPI(conf.Token)
+	bot.BotAPI, err = tg.NewBotAPI(conf.Token)
 	if err != nil {
 		panic(err)
 	}
@@ -141,10 +141,10 @@ func main() {
 					err := cmd.Action(args, update, womb)
 					if err != nil {
 						errl.Printf("%s: %v", cmdName, err)
-						replyToMsg(
+						bot.ReplyWithMessage(
 							update.Message.MessageID,
 							"Произошла ошибка... ответьте на это сообщение командой /admin",
-							update.Message.Chat.ID, bot,
+							update.Message.Chat.ID,
 						)
 					}
 					break
