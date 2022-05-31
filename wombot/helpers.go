@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+// from@chat/messageid: text
+func logMessage(msg tg.Message) {
+	messl.Printf("%d(@%s) @ %d(@%s)/%d: %s\n", msg.From.ID, msg.From.UserName, msg.Chat.ID, msg.Chat.UserName, msg.MessageID, msg.Text)
+}
+
 // isInList нужен для проверки сообщений
 func isInList(str string, list []string) bool {
 	for _, elem := range list {

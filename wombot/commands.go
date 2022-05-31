@@ -2134,7 +2134,6 @@ var bankCommands = []command{
 				}
 				num = b.Money
 			} else {
-				debl.Println(num, err)
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Вомбанк снять: требуется целое неотрицательное число шишей до 2^64", update.Message.Chat.ID)
 				return err
 			}
@@ -3017,13 +3016,6 @@ var clanCommands = []command{
 					),
 					update.Message.Chat.ID,
 				)
-				/*
-					debl.Printf(
-						"%.f, %.f, %v, %v",
-						left.Hours(), left.Hours()*60-left.Minutes(), left.Hours(),
-						left.Hours()*60-left.Minutes(),
-					)
-				*/
 				return err
 			}
 			add := 500 + rand.Intn(200) - rand.Intn(200)
