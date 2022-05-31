@@ -152,11 +152,12 @@ func main() {
 
 			for _, cmd := range commands {
 				if cmd.Is(args, update) {
-					if conf.LogLevel == 1 {
+					cmdName := cmd.Name
+
+					if conf.LogLevel == 1 && update.Message != nil {
 						logMessage(*update.Message)
 					}
 
-					cmdName := cmd.Name
 					err := cmd.Action(args, update, womb)
 					if err != nil {
 						errl.Printf("%d: %s: %v\n", messID, cmdName, err)
