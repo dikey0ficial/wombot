@@ -8,12 +8,15 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"sync"
 
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 )
 
 var (
@@ -117,60 +120,77 @@ func main() {
 	var wg = sync.WaitGroup{}
 
 	defer func() {
+		recover()
+		fmt.Print("\r") // because I want beautiful output without `^C`!!1
+		infl.Println("ending...")
 		wg.Wait()
 		infl.Println("==end==")
 	}()
 
+	var (
+		signalChan = make(chan os.Signal, 1)
+		signals    = []os.Signal{syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP}
+	)
+	signal.Notify(signalChan, signals...)
+
 	infl.Println("==start==")
 
-	for update := range updates {
-		wg.Add(1)
-		go func(update tg.Update) {
-			defer wg.Done()
-			var (
-				cmdName string   = "-"
-				args    []string = make([]string, 0)
-				womb    User     = User{}
-				messID  int      = 0
-			)
+SELECTFOR:
+	for {
+		select {
+		case <-signalChan:
+			close(signalChan)
+			break SELECTFOR
 
-			defer func() {
-				if e := recover(); e != nil {
-					errl.Printf("Goroutine failed (%s): %v\n", cmdName, e)
-				}
-			}()
+		case update := <-updates:
+			wg.Add(1)
+			go func(update tg.Update) {
+				defer wg.Done()
+				var (
+					cmdName string   = "-"
+					args    []string = make([]string, 0)
+					womb    User     = User{}
+					messID  int      = 0
+				)
 
-			if update.Message != nil {
-				args = strings.Fields(update.Message.Text)
-				messID = update.Message.MessageID
-				_ = users.FindOne(ctx, bson.M{"_id": update.Message.From.ID}).Decode(&womb)
+				defer func() {
+					if e := recover(); e != nil {
+						errl.Printf("Goroutine failed (%s): %v\n", cmdName, e)
+					}
+				}()
 
-				if conf.LogLevel == 2 {
-					logMessage(*update.Message)
-				}
-			}
+				if update.Message != nil {
+					args = strings.Fields(update.Message.Text)
+					messID = update.Message.MessageID
+					_ = users.FindOne(ctx, bson.M{"_id": update.Message.From.ID}).Decode(&womb)
 
-			for _, cmd := range commands {
-				if cmd.Is(args, update) {
-					cmdName := cmd.Name
-
-					if conf.LogLevel == 1 && update.Message != nil {
+					if conf.LogLevel == 2 {
 						logMessage(*update.Message)
 					}
-
-					err := cmd.Action(args, update, womb)
-					if err != nil {
-						errl.Printf("%d: %s: %v\n", messID, cmdName, err)
-						bot.ReplyWithMessage(
-							update.Message.MessageID,
-							"Произошла ошибка... ответьте на это сообщение командой /admin",
-							update.Message.Chat.ID,
-						)
-					}
-					break
 				}
-			}
-		}(update)
+
+				for _, cmd := range commands {
+					if cmd.Is(args, update) {
+						cmdName := cmd.Name
+
+						if conf.LogLevel == 1 && update.Message != nil {
+							logMessage(*update.Message)
+						}
+
+						err := cmd.Action(args, update, womb)
+						if err != nil {
+							errl.Printf("%d: %s: %v\n", messID, cmdName, err)
+							bot.ReplyWithMessage(
+								update.Message.MessageID,
+								"Произошла ошибка... ответьте на это сообщение командой /admin",
+								update.Message.Chat.ID,
+							)
+						}
+						break
+					}
+				}
+			}(update)
+		}
 	}
 
 }
