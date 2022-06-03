@@ -229,7 +229,7 @@ func isGroup(m *tg.Message) bool {
 	return m.Chat.IsGroup() || m.Chat.IsSuperGroup()
 }
 
-var iiuCache = NewIIUCache(1)
+var iiuCache = NewIIUCache(25)
 
 func getIsInUsers(id int64) (bool, error) {
 	if is, el := iiuCache.Get(id); is && el != nil {
