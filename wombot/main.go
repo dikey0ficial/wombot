@@ -171,7 +171,7 @@ SELECTFOR:
 
 				for _, cmd := range commands {
 					if cmd.Is(args, update) {
-						cmdName := cmd.Name
+						cmdName = cmd.Name
 
 						if conf.LogLevel == 1 && update.Message != nil {
 							logMessage(*update.Message)

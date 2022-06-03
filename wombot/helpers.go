@@ -229,12 +229,19 @@ func isGroup(m *tg.Message) bool {
 	return m.Chat.IsGroup() || m.Chat.IsSuperGroup()
 }
 
+var iiuCache = NewIIUCache(1)
+
 func getIsInUsers(id int64) (bool, error) {
+	if is, el := iiuCache.Get(id); is && el != nil {
+		return el.Value, nil
+	}
 	rCount, err := users.CountDocuments(ctx, bson.M{"_id": id})
 	if err != nil {
 		return false, err
 	}
-	return rCount != 0, nil
+	is := rCount != 0
+	iiuCache.Put(id, is)
+	return is, nil
 }
 
 func getIsBanked(id int64) (bool, error) {

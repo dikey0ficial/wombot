@@ -321,12 +321,10 @@ var commands = []command{
 	{
 		Name: "take_wombat",
 		Is: func(args []string, update tg.Update) bool {
-			if isInList(strings.ToLower(strings.Join(args, " ")),
+			return isInList(
+				strings.ToLower(strings.Join(args, " ")),
 				[]string{"взять вомбата", "купить вомбата у арабов", "хочу вомбата"},
-			) {
-				return true
-			}
-			return false
+			)
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if isGroup(update.Message) {
@@ -358,6 +356,7 @@ var commands = []command{
 			if err != nil {
 				return err
 			}
+			iiuCache.Put(update.Message.From.ID, true)
 			newimg, err := getImgs(imgsC, "new")
 			if err != nil {
 				return err
@@ -427,6 +426,7 @@ var commands = []command{
 			if err != nil {
 				return err
 			}
+			iiuCache.Put(update.Message.From.ID, false)
 			kill, err := getImgs(imgsC, "kill")
 			if err != nil {
 				return err
