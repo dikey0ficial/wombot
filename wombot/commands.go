@@ -851,11 +851,11 @@ var commands = []command{
 				return err
 			}
 			if !isInUsers {
-				_, err = bot.ReplyWithMessage(update.Message.MessageID, "У тебя нет вомбата, буди себя сам", update.Message.From.ID)
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "У тебя нет вомбата, буди себя сам", update.Message.Chat.ID)
 				return err
 			} else if !womb.Sleep {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Твой вомбат и так не спит, может ты хотел лечь спать? (команда `лечь спать` (опять логика))",
-					update.Message.From.ID,
+					update.Message.Chat.ID,
 				)
 				return err
 			}
