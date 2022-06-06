@@ -913,7 +913,7 @@ var commands = []command{
 			if err != nil {
 				return err
 			}
-			_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(unsleep), msg, update.Message.From.ID)
+			_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(unsleep), msg, update.Message.Chat.ID)
 			return err
 		},
 	},
@@ -4235,7 +4235,11 @@ var clanAttackCommands = []command{
 			if err != nil {
 				return err
 			}
-			ph2, err := bot.SendPhoto(im, "", frClan.Leader)
+			var frClanID int64 = frClan.Leader
+			if update.Message.Chat.ID != frClan.GroupID {
+				frClanID = frClan.GroupID
+			}
+			ph2, err := bot.SendPhoto(im, "", frClanID)
 			if err != nil {
 				return err
 			}
@@ -4245,7 +4249,7 @@ var clanAttackCommands = []command{
 			}
 			war2, err := bot.ReplyWithMessage(ph2, fmt.Sprintf(
 				"АААА ВАЙНААААА!!!\n Вомбат %s всё же принял ваше предложение",
-				womb.Name), frClan.Leader,
+				womb.Name), frClanID,
 			)
 			if err != nil {
 				return err
@@ -4266,7 +4270,7 @@ var clanAttackCommands = []command{
 				}
 				err = bot.EditMessage(war2, fmt.Sprintf(
 					"РАУНД %d\n\n[%s]:\n - здоровье: %d\n - Ваш удар: %d\n\n[%s]:\n - здоровье: %d",
-					round, frClan.Tag, h2, f2, toClan.Tag, h1), frClan.Leader,
+					round, frClan.Tag, h2, f2, toClan.Tag, h1), frClanID,
 				)
 				if err != nil {
 					return err
@@ -4283,7 +4287,7 @@ var clanAttackCommands = []command{
 				}
 				bot.EditMessage(war2, fmt.Sprintf(
 					"РАУНД %d\n\n[%s]:\n - здоровье: %d\n - Ваш удар: %d\n\n[%s]:\n - здоровье: %d\n - 💔 удар: %d",
-					round, frClan.Tag, h2, f2, toClan.Tag, h1, f1), frClan.Leader,
+					round, frClan.Tag, h2, f2, toClan.Tag, h1, f1), frClanID,
 				)
 				if err != nil {
 					return err
@@ -4299,7 +4303,7 @@ var clanAttackCommands = []command{
 					}
 					err = bot.EditMessage(war2,
 						"Оба клана сдохли!!!)\nВаши характеристики не поменялись, но зато да.",
-						frClan.Leader,
+						frClanID,
 					)
 					if err != nil {
 						return err
@@ -4317,7 +4321,7 @@ var clanAttackCommands = []command{
 					}
 					err = bot.EditMessage(war2, fmt.Sprintf(
 						"В раунде %d благодаря лишению у другого здоровья победил клан...",
-						round), frClan.Leader,
+						round), frClanID,
 					)
 					if err != nil {
 						return err
@@ -4333,7 +4337,7 @@ var clanAttackCommands = []command{
 					}
 					err = bot.EditMessage(war2, fmt.Sprintf(
 						"Победил клан `%s` [%s]!!!\nВаше состояние не изменилось)",
-						toClan.Name, toClan.Tag), frClan.Leader,
+						toClan.Name, toClan.Tag), frClanID,
 					)
 					if err != nil {
 						return err
@@ -4349,7 +4353,7 @@ var clanAttackCommands = []command{
 					}
 					err = bot.EditMessage(war2, fmt.Sprintf(
 						"В раунде %d благодаря лишению у другого здоровья победил клан...",
-						round), frClan.Leader,
+						round), frClanID,
 					)
 					if err != nil {
 						return err
@@ -4358,7 +4362,7 @@ var clanAttackCommands = []command{
 					frClan.XP += 10
 					err = bot.EditMessage(war2, fmt.Sprintf(
 						"Победил клан `%s` %s!!!\nВы получили 10 XP, теперь их у Вас %d",
-						frClan.Name, frClan.Tag, frClan.XP), frClan.Leader,
+						frClan.Name, frClan.Tag, frClan.XP), frClanID,
 					)
 					if err != nil {
 						return err
@@ -4379,7 +4383,7 @@ var clanAttackCommands = []command{
 					if h1 < h2 {
 						err = bot.EditMessage(war2, fmt.Sprintf(
 							"И победил клан `%s` %s!!!\nВы получили 10 XP, теперь их у Вас %d",
-							frClan.Name, frClan.Tag, frClan.XP), frClan.Leader,
+							frClan.Name, frClan.Tag, frClan.XP), frClanID,
 						)
 						if err != nil {
 							return err
@@ -4402,7 +4406,7 @@ var clanAttackCommands = []command{
 						}
 						err = bot.EditMessage(war2, fmt.Sprintf(
 							"Победил клан `%s` [%s]!!!\nВаше состояние не изменилось)",
-							toClan.Name, toClan.Tag), frClan.Leader,
+							toClan.Name, toClan.Tag), frClanID,
 						)
 						if err != nil {
 							return err
