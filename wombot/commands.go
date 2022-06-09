@@ -582,7 +582,7 @@ var commands = []command{
 	{
 		Name: "buy",
 		Is: func(args []string, update tg.Update) bool {
-			return args[0] == "купить"
+			return strings.ToLower(args[0]) == "купить"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if len(args) == 1 {
@@ -597,7 +597,7 @@ var commands = []command{
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "у тебя недостаточно вомбатов чтобы кумпить (нужен минимум один)", update.Message.Chat.ID)
 				return err
 			}
-			switch args[1] {
+			switch strings.ToLower(args[1]) {
 			case "здоровья":
 				fallthrough
 			case "здоровье":
