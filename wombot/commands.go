@@ -221,8 +221,8 @@ var commands = []command{
 				return err
 			}
 			_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(abimg), fmt.Sprintf(
-				"Вомбат `%s` %s\nТитулы: %s\n 👁 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
-				tWomb.Name, clname, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money, sl),
+				"Вомбат [%s](tg://user?id=%d) %s\nТитулы: %s\n 👁 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
+				tWomb.Name, tWomb.ID, clname, strTitles, tWomb.XP, tWomb.Health, tWomb.Force, tWomb.Money, sl),
 				update.Message.Chat.ID, MarkdownParseModePhoto,
 			)
 			return err
