@@ -1104,17 +1104,17 @@ var commands = []command{
 			for num, w := range rating {
 				switch name {
 				case "money":
-					msg += fmt.Sprintf("%d | %s | %d шишей при себе\n", num+1, w.Name, w.Money)
+					msg += fmt.Sprintf("%d | [%s](tg://user?id=%d) | %d шишей при себе\n", num+1, w.Name, w.ID, w.Money)
 				case "xp":
-					msg += fmt.Sprintf("%d | %s | %d XP\n", num+1, w.Name, w.XP)
+					msg += fmt.Sprintf("%d | [%s](tg://user?id=%d) | %d XP\n", num+1, w.Name, w.ID, w.XP)
 				case "health":
-					msg += fmt.Sprintf("%d | %s | %d здоровья\n", num+1, w.Name, w.Health)
+					msg += fmt.Sprintf("%d | [%s](tg://user?id=%d) | %d здоровья\n", num+1, w.Name, w.ID, w.Health)
 				case "force":
-					msg += fmt.Sprintf("%d | %s | %d мощи\n", num+1, w.Name, w.Force)
+					msg += fmt.Sprintf("%d | [%s](tg://user?id=%d) | %d мощи\n", num+1, w.Name, w.ID, w.Force)
 				}
 			}
 			msg = strings.TrimSuffix(msg, "\n")
-			_, err = bot.ReplyWithMessage(update.Message.MessageID, msg, update.Message.Chat.ID)
+			_, err = bot.ReplyWithMessage(update.Message.MessageID, msg, update.Message.Chat.ID, MarkdownParseModeMessage)
 			return err
 		},
 	},
@@ -1427,11 +1427,12 @@ var attackCommands = []command{
 			_, err = bot.ReplyWithMessage(
 				update.Message.MessageID,
 				fmt.Sprintf(
-					"От: %s (%d)\nКому: %s (%d)\n",
+					"От: [%s](tg://user?id=%d)\nКому: [%s](tg://user?id=%d)\n",
 					fromWomb.Name, fromWomb.ID,
 					toWomb.Name, toWomb.ID,
 				),
 				update.Message.Chat.ID,
+				MarkdownParseModeMessage,
 			)
 			return err
 		},
@@ -2945,7 +2946,7 @@ var clanCommands = []command{
 					if err != nil {
 						return err
 					}
-					msg += fmt.Sprintf("        %d. %s", i+1, tWomb.Name)
+					msg += fmt.Sprintf("        %d. [%s](tg://user?id=%d)", i+1, tWomb.Name, tWomb.ID)
 					if id == sClan.Leader {
 						msg += " | Лидер"
 					} else if sClan.Banker == id {
@@ -2966,7 +2967,7 @@ var clanCommands = []command{
 				" ❤ Среднее здоровье: %d\n ⚡ Средняя мощь: %d\n 👁 XP: %d",
 				midHealth, midForce, sClan.XP,
 			)
-			_, err = bot.ReplyWithMessage(update.Message.MessageID, msg, update.Message.Chat.ID)
+			_, err = bot.ReplyWithMessage(update.Message.MessageID, msg, update.Message.Chat.ID, MarkdownParseModeMessage)
 			return err
 		},
 	},
