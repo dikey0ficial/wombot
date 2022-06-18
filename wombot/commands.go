@@ -1692,10 +1692,6 @@ var attackCommands = []command{
 			return strings.ToLower(args[1]) == "принять"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			if isGroup(update.Message) {
-				_, err := bot.ReplyWithMessage(update.Message.MessageID, "данная команда работает (мб только пока) только в лс)", update.Message.Chat.ID)
-				return err
-			}
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
 			if err != nil {
 				return err
