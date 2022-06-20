@@ -4,6 +4,7 @@ import (
 	"fmt"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"math"
 	"math/rand"
@@ -4526,6 +4527,13 @@ var devtoolsCommands = []command{
 			return strings.ToLower(args[1]) == "set_money"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				return nil
+			}
 			if len(args) < 3 {
 				_, err := bot.ReplyWithMessage(
 					update.Message.MessageID,
@@ -4534,18 +4542,19 @@ var devtoolsCommands = []command{
 				)
 				return err
 			}
-			if i, err := strconv.ParseUint(args[2], 10, 64); err != nil {
-				_, err := bot.ReplyWithMessage(
+			var i uint64
+			if i, err = strconv.ParseUint(args[2], 10, 64); err != nil {
+				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
 					"не число",
 					update.Message.Chat.ID,
 				)
 				return err
-			} else {
-				womb.Money = i
 			}
-			err := docUpd(womb, wombFilter(womb), users)
+			_, err = users.UpdateOne(ctx, bson.M{"_id": womb.ID}, bson.M{"$set": bson.M{"money": primitive.NewDecimal128(i, 0)}})
+			// TODO: make this everywhere where bot interact with money
 			if err != nil {
+				debl.Println(err)
 				return err
 			}
 			_, err = bot.ReplyWithMessage(
