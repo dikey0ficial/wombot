@@ -1740,7 +1740,7 @@ var attackCommands = []command{
 				return err
 			}
 			im := randImg(atimgs)
-			ph1, err := bot.SendPhoto(im, "", update.Message.Chat.ID)
+			ph1, err := bot.ReplyWithPhoto(update.Message.MessageID, im, "", update.Message.Chat.ID)
 			if err != nil {
 				return err
 			}
