@@ -533,7 +533,7 @@ var commands = []command{
 			if ch := rand.Int(); ch%2 == 0 || hasTitle(2, womb.Titles) && (ch%2 == 0 || ch%3 == 0) {
 				rand.Seed(time.Now().UnixNano())
 				win := rand.Intn(9) + 1
-				womb.Money += uint64(win)
+				womb.Money += uint32(win)
 				if addXP := rand.Intn(512 - 1); addXP < 5 {
 					womb.XP += uint32(addXP)
 					_, err = bot.ReplyWithMessage(update.Message.MessageID,
@@ -620,7 +620,7 @@ var commands = []command{
 						return err
 					}
 				}
-				if womb.Money < uint64(amount)*5 {
+				if womb.Money < uint32(amount)*5 {
 					_, err = bot.ReplyWithMessage(update.Message.MessageID, "Надо накопить побольше шишей! 1 здоровье = 5 шишей", update.Message.Chat.ID)
 					return err
 				}
@@ -631,7 +631,7 @@ var commands = []command{
 					)
 					return err
 				}
-				womb.Money -= uint64(amount) * 5
+				womb.Money -= uint32(amount) * 5
 				womb.Health += amount
 				err = docUpd(womb, wombFilter(womb), users)
 				if err != nil {
@@ -668,7 +668,7 @@ var commands = []command{
 						return err
 					}
 				}
-				if womb.Money < uint64(amount)*3 {
+				if womb.Money < uint32(amount)*3 {
 					_, err = bot.ReplyWithMessage(update.Message.MessageID, "Надо накопить побольше шишей! 1 мощь = 3 шишв", update.Message.Chat.ID)
 					return err
 				}
@@ -679,7 +679,7 @@ var commands = []command{
 					)
 					return err
 				}
-				womb.Money -= uint64(amount) * 3
+				womb.Money -= uint32(amount) * 3
 				womb.Force += amount
 				err = docUpd(womb, wombFilter(womb), users)
 				if err != nil {
@@ -875,7 +875,7 @@ var commands = []command{
 					womb.Force += i
 					msg = fmt.Sprintf("Встав, вомбат почувствовал силу в своих лапах! +%d мощи", i)
 				case 3:
-					i := uint64(rand.Intn(100) + 1)
+					i := uint32(rand.Intn(100) + 1)
 					womb.Money += i
 					msg = fmt.Sprintf("Проснувшись, вомбат увидел мешок, содержащий %d шишей. Кто бы мог его оставить?", i)
 				case 4:
@@ -947,7 +947,7 @@ var commands = []command{
 				amount uint64
 				err    error
 			)
-			if amount, err = strconv.ParseUint(cargs[0], 10, 64); err != nil {
+			if amount, err = strconv.ParseUint(cargs[0], 10, 32); err != nil {
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
 					"нелегальные у Вас какие-то числа",
@@ -976,7 +976,7 @@ var commands = []command{
 				return err
 			}
 			ID = tWomb.ID
-			if womb.Money < amount {
+			if womb.Money < uint32(amount) {
 				if _, err = strconv.ParseInt(cargs[0], 10, 64); err == nil {
 					_, err = bot.ReplyWithMessage(
 						update.Message.MessageID, "Ошибка: количество переводимых шишей должно быть больше нуля",
@@ -1009,8 +1009,8 @@ var commands = []command{
 				)
 				return err
 			}
-			womb.Money -= amount
-			tWomb.Money += amount
+			womb.Money -= uint32(amount)
+			tWomb.Money += uint32(amount)
 			err = docUpd(tWomb, bson.M{"_id": ID}, users)
 			if err != nil {
 				return err
@@ -1245,7 +1245,9 @@ var commands = []command{
 			return s == "bot.ReplyWithMessage" || s == "reply_to_msg"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
+			debl.Println("!!!")
 			if !hasTitle(3, womb.Titles) {
+				debl.Println("!!!")
 				return nil
 			} else if len(args) < 4 {
 				_, err := bot.ReplyWithMessage(update.Message.MessageID, "мало аргументов", update.Message.Chat.ID)
@@ -1261,11 +1263,11 @@ var commands = []command{
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "error converting #2 string to int64", update.Message.Chat.ID)
 				return err
 			}
-			_, err = bot.ReplyWithMessage(rto, strings.Join(args[2:], " "), int64(sto), MarkdownParseModeMessage)
+			_, err = bot.ReplyWithMessage(rto, strings.Join(args[3:], " "), int64(sto), MarkdownParseModeMessage)
 			if err != nil {
 				return err
 			}
-			_, err = bot.ReplyWithMessage(update.Message.MessageID, "Запрос отправлен успешно!", update.Message.Chat.ID)
+			_, err = bot.ReplyWithMessage(update.Message.MessageID, "успешно!", update.Message.Chat.ID)
 			return err
 		},
 	},
@@ -1832,7 +1834,7 @@ var attackCommands = []command{
 					mc := int((rand.Intn(int(womb.Health)) + 1) / 2)
 					womb.Health += uint32(h1c)
 					womb.Force += uint32(f1c)
-					womb.Money += uint64(mc)
+					womb.Money += uint32(mc)
 					womb.XP += 10
 					err = bot.EditMessage(war1, fmt.Sprintf(
 						"Победил вомбат %s!!!\nВы получили 10 XP, %d силы, %d здоровья и %d шишей, теперь их у Вас %d, %d, %d и %d соответственно",
@@ -1872,7 +1874,7 @@ var attackCommands = []command{
 					mc := int((rand.Intn(int(tWomb.Health)) + 1) / 2)
 					tWomb.Health += uint32(h2c)
 					tWomb.Force += uint32(f2c)
-					tWomb.Money += uint64(mc)
+					tWomb.Money += uint32(mc)
 					tWomb.XP += 10
 					err = bot.EditMessage(war2,
 						fmt.Sprintf(
@@ -1903,7 +1905,7 @@ var attackCommands = []command{
 						mc := int((rand.Intn(int(tWomb.Health)) + 1) / 2)
 						tWomb.Health += uint32(h2c)
 						tWomb.Force += uint32(f2c)
-						tWomb.Money += uint64(mc)
+						tWomb.Money += uint32(mc)
 						tWomb.XP += 10
 						err = bot.EditMessage(war2,
 							fmt.Sprintf(
@@ -1933,7 +1935,7 @@ var attackCommands = []command{
 						mc := int((rand.Intn(int(womb.Health)) + 1) / 2)
 						womb.Health += uint32(h1c)
 						womb.Force += uint32(f1c)
-						womb.Money += uint64(mc)
+						womb.Money += uint32(mc)
 						womb.XP += 10
 						err = bot.EditMessage(war1,
 							fmt.Sprintf(
@@ -2051,7 +2053,7 @@ var bankCommands = []command{
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Вомбанк положить: требуется целое неотрицательное число шишей до 2^64", update.Message.Chat.ID)
 				return err
 			}
-			if womb.Money < num+1 {
+			if womb.Money < uint32(num)+1 {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Вомбанк положить: недостаточно шишей при себе для операции", update.Message.Chat.ID)
 				return err
 			} else if !isBanked {
@@ -2070,8 +2072,8 @@ var bankCommands = []command{
 			if err != nil {
 				return err
 			}
-			womb.Money -= num
-			b.Money += num
+			womb.Money -= uint32(num)
+			b.Money += uint32(num)
 			err = docUpd(womb, wombFilter(womb), users)
 			if err != nil {
 				return err
@@ -2131,17 +2133,17 @@ var bankCommands = []command{
 					_, err = bot.ReplyWithMessage(update.Message.MessageID, "У вас на счету 0 шишей. Зачем?", update.Message.Chat.ID)
 					return err
 				}
-				num = b.Money
+				num = uint64(b.Money)
 			} else {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Вомбанк снять: требуется целое неотрицательное число шишей до 2^64", update.Message.Chat.ID)
 				return err
 			}
-			if b.Money < num {
+			if b.Money < uint32(num) {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Вомбанк снять: недостаточно шишей на вомбосчету для операции", update.Message.Chat.ID)
 				return err
 			}
-			b.Money -= num
-			womb.Money += num
+			b.Money -= uint32(num)
+			womb.Money += uint32(num)
 			err = docUpd(b, wombFilter(womb), bank)
 			if err != nil {
 				return err
@@ -3018,7 +3020,7 @@ var clanCommands = []command{
 				return err
 			}
 			add := 500 + rand.Intn(200) - rand.Intn(200)
-			sClan.Money += uint64(add)
+			sClan.Money += uint32(add)
 			sClan.LastRewardTime = time.Now()
 			if err := docUpd(sClan, bson.M{"_id": sClan.Tag}, clans); err != nil {
 				return err
@@ -3690,7 +3692,7 @@ var clanBankCommands = []command{
 			var take uint64
 			if take, err = strconv.ParseUint(args[3], 10, 64); err != nil {
 				if args[3] == "всё" {
-					take = sClan.Money
+					take = uint64(sClan.Money)
 				} else {
 					_, err = bot.ReplyWithMessage(
 						update.Message.MessageID,
@@ -3700,7 +3702,7 @@ var clanBankCommands = []command{
 					return err
 				}
 			}
-			if take > sClan.Money {
+			if take > uint64(sClan.Money) {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Запрашиваемая сумма выше количества денег в казне", update.Message.Chat.ID)
 				return err
 			} else if take == 0 {
@@ -3721,7 +3723,7 @@ var clanBankCommands = []command{
 				update.Message.MessageID,
 				fmt.Sprintf(
 					"Вы успешно сняли из казны %d Ш! Теперь в казне %d Ш, а у вас на счету %d",
-					take, sClan.Money-take, womb.Money+take,
+					take, uint64(sClan.Money)-take, uint64(womb.Money)+take,
 				),
 				update.Message.Chat.ID,
 			)
@@ -3778,7 +3780,7 @@ var clanBankCommands = []command{
 					update.Message.Chat.ID,
 				)
 				return err
-			} else if take > womb.Money {
+			} else if take > uint64(womb.Money) {
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
 					"Сумма, которую вы хотите положить, больше кол-ва денег на вашем счету",
@@ -3806,7 +3808,7 @@ var clanBankCommands = []command{
 				update.Message.MessageID,
 				fmt.Sprintf(
 					"Вы положили %d Ш в казну. Теперь в казне %d Ш, а у вас %d",
-					take, sClan.Money+take, womb.Money-take,
+					take, uint64(sClan.Money)+take, uint64(womb.Money)-take,
 				),
 				update.Message.Chat.ID,
 			)

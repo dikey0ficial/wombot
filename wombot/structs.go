@@ -17,7 +17,7 @@ type User struct { // параметры юзера
 	XP     uint32   `bson:"xp"`
 	Health uint32   `bson:"health"`
 	Force  uint32   `bson:"force"`
-	Money  uint64   `bson:"money"`
+	Money  uint32   `bson:"money"`
 	Titles []uint16 `bson:"titles"`
 	Sleep  bool     `bson:"sleep"`
 }
@@ -38,7 +38,7 @@ type Imgs struct {
 // Banked реализет вомбанковскую ячейку
 type Banked struct {
 	ID    int64  `bson:"_id"`
-	Money uint64 `bson:"money"`
+	Money uint32 `bson:"money"`
 }
 
 // ClanSettings реализует настройки клана
@@ -65,7 +65,7 @@ type Clwar struct {
 type Clan struct {
 	Tag            string       `bson:"_id"`
 	Name           string       `bson:"name"`
-	Money          uint64       `bson:"money"` // Казна
+	Money          uint32       `bson:"money"` // Казна
 	XP             uint32       `bson:"xp"`
 	Leader         int64        `bson:"leader"`
 	Banker         int64        `bson:"banker"`
