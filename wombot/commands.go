@@ -979,7 +979,7 @@ var commands = []command{
 			if womb.Money < uint32(amount) {
 				if _, err = strconv.ParseInt(cargs[0], 10, 64); err == nil {
 					_, err = bot.ReplyWithMessage(
-						update.Message.MessageID, "Ошибка: количество переводимых шишей должно быть больше нуля",
+						update.Message.MessageID, "Ошибка: на Вашем счету шишей меньше указанного количества",
 						update.Message.Chat.ID,
 					)
 					return err
