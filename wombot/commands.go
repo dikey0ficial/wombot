@@ -572,10 +572,19 @@ var commands = []command{
 			return strings.ToLower(strings.Join(args, " ")) == "магазин"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			_, err := bot.ReplyWithMessage(update.Message.MessageID, strings.Join([]string{"Магазин:", " — 1 здоровье — 5 ш", " — 1 мощь — 3 ш",
-				" — квес — 256 ш", " — вадшам — 250'000 ш",
-				"Для покупки использовать команду 'купить [название_объекта] ([кол-во])",
-			}, "\n"),
+			_, err := bot.ReplyWithMessage(
+				update.Message.MessageID,
+				strings.Join(
+					[]string{
+						"Магазин:",
+						fmt.Sprintf(" — 1 здоровье — %d ш", 5+womb.XP%100),
+						fmt.Sprintf(" — 1 мощь — %d ш", 3+womb.XP%100),
+						" — Квес — 256 ш",
+						" — Вадшам — 250'000 ш",
+						"Для покупки использовать команду 'купить [название_объекта] ([кол-во])",
+					},
+					"\n",
+				),
 				update.Message.Chat.ID,
 			)
 			return err
@@ -620,8 +629,18 @@ var commands = []command{
 						return err
 					}
 				}
-				if womb.Money < uint32(amount)*5 {
-					_, err = bot.ReplyWithMessage(update.Message.MessageID, "Надо накопить побольше шишей! 1 здоровье = 5 шишей", update.Message.Chat.ID)
+
+				var costOfOne uint32 = 5 + womb.XP%100
+
+				if womb.Money < uint32(amount)*costOfOne {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						fmt.Sprintf(
+							"Надо накопить побольше шишей! 1 здоровье = %d шишей",
+							costOfOne,
+						),
+						update.Message.Chat.ID,
+					)
 					return err
 				}
 				if uint64(womb.Health+amount) > uint64(math.Pow(2, 32)) {
@@ -631,7 +650,7 @@ var commands = []command{
 					)
 					return err
 				}
-				womb.Money -= uint32(amount) * 5
+				womb.Money -= uint32(amount) * costOfOne
 				womb.Health += amount
 				err = docUpd(womb, wombFilter(womb), users)
 				if err != nil {
@@ -668,8 +687,18 @@ var commands = []command{
 						return err
 					}
 				}
-				if womb.Money < uint32(amount)*3 {
-					_, err = bot.ReplyWithMessage(update.Message.MessageID, "Надо накопить побольше шишей! 1 мощь = 3 шишв", update.Message.Chat.ID)
+
+				var costOfOne uint32 = 3 + womb.XP%100
+
+				if womb.Money < uint32(amount)*costOfOne {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						fmt.Sprintf(
+							"Надо накопить побольше шишей! 1 мощь = %d шиша",
+							costOfOne,
+						),
+						update.Message.Chat.ID,
+					)
 					return err
 				}
 				if uint64(womb.Force+amount) > uint64(math.Pow(2, 32)) {
@@ -679,7 +708,7 @@ var commands = []command{
 					)
 					return err
 				}
-				womb.Money -= uint32(amount) * 3
+				womb.Money -= uint32(amount) * costOfOne
 				womb.Force += amount
 				err = docUpd(womb, wombFilter(womb), users)
 				if err != nil {
