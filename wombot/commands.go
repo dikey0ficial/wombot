@@ -4,7 +4,6 @@ import (
 	"fmt"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"math"
 	"math/rand"
@@ -418,8 +417,19 @@ var commands = []command{
 				return err
 			}
 			if hasTitle(1, womb.Titles) {
-				_, err := bot.ReplyWithMessage(update.Message.MessageID,
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
 					"Ошибка: вы лишены права уничтожать вомбата; ответьте на это сообщение командой /admin для объяснений",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if c != 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы состоите в клане; выйдите перед этим из клана",
 					update.Message.Chat.ID,
 				)
 				return err
@@ -427,14 +437,6 @@ var commands = []command{
 			_, err = users.DeleteOne(ctx, wombFilter(womb))
 			if err != nil {
 				return err
-			}
-			if c, err := clans.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
-				return err
-			} else if c != 0 {
-				_, err = clans.UpdateOne(ctx, bson.M{"members": update.Message.From.ID}, bson.M{"$pull": bson.M{"members": update.Message.From.ID}})
-				if err != nil {
-					return err
-				}
 			}
 			iiuCache.Put(update.Message.From.ID, false)
 			kill, err := getImgs(imgsC, "kill")
@@ -1013,16 +1015,12 @@ var commands = []command{
 				return err
 			}
 			ID = tWomb.ID
-			if womb.Money < uint32(amount) {
-				if _, err = strconv.ParseInt(cargs[0], 10, 64); err == nil {
-					_, err = bot.ReplyWithMessage(
-						update.Message.MessageID, "Ошибка: на Вашем счету шишей меньше указанного количества",
-						update.Message.Chat.ID,
-					)
-					return err
-				} else {
-					_, err = bot.ReplyWithMessage(update.Message.MessageID, "Ошибка: кол-во переводимых шишей быть числом", update.Message.Chat.ID)
-				}
+			if uint64(womb.Money) < amount {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID, "Ошибка: на Вашем счету шишей меньше указанного количества",
+					update.Message.Chat.ID,
+				)
+				return err
 			}
 			if amount == 0 {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID,
@@ -4590,8 +4588,7 @@ var devtoolsCommands = []command{
 				)
 				return err
 			}
-			_, err = users.UpdateOne(ctx, bson.M{"_id": womb.ID}, bson.M{"$set": bson.M{"money": primitive.NewDecimal128(i, 0)}})
-			// TODO: make this everywhere where bot interact with money
+			_, err = users.UpdateOne(ctx, bson.M{"_id": womb.ID}, bson.M{"$set": bson.M{"money": i}})
 			if err != nil {
 				debl.Println(err)
 				return err
