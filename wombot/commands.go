@@ -4580,7 +4580,7 @@ var devtoolsCommands = []command{
 				return err
 			}
 			var i uint64
-			if i, err = strconv.ParseUint(args[2], 10, 64); err != nil {
+			if i, err = strconv.ParseUint(args[2], 10, 32); err != nil {
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
 					"не число",
@@ -4652,10 +4652,11 @@ var devtoolsCommands = []command{
 			return strings.ToLower(args[1]) == "info"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			var sWomb = womb
-			if len(args) > 3 {
-				err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&sWomb)
-				if err != nil {
+			var sWomb User
+			if len(args) == 3 {
+				if c, err := users.CountDocuments(ctx, bson.M{"name": cins(args[2])}); err != nil {
+					return err
+				} else if c == 0 {
 					_, err = bot.ReplyWithMessage(
 						update.Message.MessageID,
 						"нет такого/такой",
@@ -4663,12 +4664,17 @@ var devtoolsCommands = []command{
 					)
 					return err
 				}
+				err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&sWomb)
+				if err != nil {
+					return err
+				}
+			} else {
+				sWomb = womb
 			}
 			_, err := bot.ReplyWithMessage(
 				update.Message.MessageID,
 				fmt.Sprintf(
-					"womb: %#v",
-					sWomb,
+					"%#v", sWomb,
 				),
 				update.Message.Chat.ID,
 			)
@@ -4684,6 +4690,27 @@ var devtoolsCommands = []command{
 			_, err := bot.ReplyWithMessage(
 				update.Message.MessageID,
 				"https://telegra.ph/Vombot-devtools-help-10-28",
+				update.Message.Chat.ID,
+			)
+			return err
+		},
+	},
+	{
+		Name: "invite",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "invite"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) == 2 {
+				return nil
+			}
+			_, err := users.UpdateOne(ctx, bson.M{"name": cins(args[2])}, bson.M{"$push": bson.M{"titles": 0}})
+			if err != nil {
+				return err
+			}
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				"успешно",
 				update.Message.Chat.ID,
 			)
 			return err
