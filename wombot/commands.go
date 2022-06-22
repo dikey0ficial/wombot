@@ -428,6 +428,14 @@ var commands = []command{
 			if err != nil {
 				return err
 			}
+			if c, err := clans.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if c != 0 {
+				_, err = clans.UpdateOne(ctx, bson.M{"members": update.Message.From.ID}, bson.M{"$pull": bson.M{"members": update.Message.From.ID}})
+				if err != nil {
+					return err
+				}
+			}
 			iiuCache.Put(update.Message.From.ID, false)
 			kill, err := getImgs(imgsC, "kill")
 			if err != nil {
@@ -605,7 +613,7 @@ var commands = []command{
 				return err
 			}
 			if !isInUsers {
-				_, err = bot.ReplyWithMessage(update.Message.MessageID, "у тебя недостаточно вомбатов чтобы кумпить (нужен минимум один)", update.Message.Chat.ID)
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "у тебя недостаточно вомбатов чтобы купить (нужен минимум один)", update.Message.Chat.ID)
 				return err
 			}
 			switch strings.ToLower(args[1]) {
