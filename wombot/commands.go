@@ -1156,7 +1156,7 @@ var commands = []command{
 	},
 	// laughter commands
 	{
-		Name: "want_to_laught",
+		Name: "want_to_laugh",
 		Is: func(args []string, update tg.Update) bool {
 			return strings.ToLower(update.Message.Text) == "хочу ржать"
 		},
@@ -1244,6 +1244,43 @@ var commands = []command{
 			}
 
 			return nil
+		},
+	},
+	{
+		Name: "want_not_to_laugh",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(update.Message.Text) == "не хочу ржать"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if c, err := laughters.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы и так не учавствуете ни в одном ржении",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+			_, err := laughters.UpdateOne(
+				ctx,
+				bson.M{"members": update.Message.From.ID},
+				bson.M{
+					"$pull": bson.M{
+						"members": update.Message.From.ID,
+					},
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				"несмотря на печаль в своих глазах, вы вышли из ржанного собрания.",
+				update.Message.Chat.ID,
+			)
+			return err
 		},
 	},
 	// subcommand handlers
