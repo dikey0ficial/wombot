@@ -76,7 +76,7 @@ type Clan struct {
 	Settings       ClanSettings `bson:"settings"`
 }
 
-// SortedMembers returns sorted list of members
+// SortedMembers возвращает отсортированный список участнииков
 func (cl Clan) SortedMembers() []int64 {
 	var membs = make([]int64, len(cl.Members))
 	membs = cl.Members
@@ -90,4 +90,13 @@ func (cl Clan) SortedMembers() []int64 {
 		}
 	}
 	return membs
+}
+
+// Laughter реализует структуру ржения
+type Laughter struct {
+	ChatID        int64     `bson:"_id"`
+	Active        bool      `bson:"active"`
+	LastStartTime time.Time `bson:"last_start_time"`
+	Leader        int64     `bson:"leader"`
+	Members       []int64   `bson:"members"`
 }
