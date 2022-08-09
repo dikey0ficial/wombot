@@ -1154,6 +1154,99 @@ var commands = []command{
 			return err
 		},
 	},
+	// laughter commands
+	{
+		Name: "want_to_laught",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(update.Message.Text) == "хочу ржать"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+
+			if !isInUsers {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"у Вас нет вомбата, а без вомбата не пустят на ржекич",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if !isGroup(update.Message) {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"ржение доступно только в групповых чатах",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := laughters.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+				return err
+			} else if c != 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы уже учавствуете в ржекиче в этом или другом чате",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := laughters.CountDocuments(ctx, bson.M{"_id": update.Message.Chat.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = laughters.InsertOne(
+					ctx,
+					bson.M{
+						"_id":     update.Message.Chat.ID,
+						"active":  true,
+						"leader":  update.Message.From.ID,
+						"members": []int64{update.Message.From.ID},
+					},
+				)
+				if err != nil {
+					return err
+				}
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"вы первый пожелавший ржать, тем самым вы стали лидером сегоднешнего ржанья! оно не начнётся без вашей команды `начать ржение`",
+					update.Message.Chat.ID,
+				)
+				if err != nil {
+					return err
+				}
+			} else {
+				_, err = laughters.UpdateOne(
+					ctx,
+					bson.M{
+						"_id": update.Message.Chat.ID,
+					},
+					bson.M{
+						"$push": bson.M{
+							"members": update.Message.From.ID,
+						},
+					},
+				)
+				if err != nil {
+					return err
+				}
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"вы приняты в собрание ржения!!!",
+					update.Message.Chat.ID,
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
+	},
+	// subcommand handlers
 	{
 		Name: "attack",
 		Is: func(args []string, update tg.Update) bool {
