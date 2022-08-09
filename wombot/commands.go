@@ -1262,12 +1262,27 @@ var commands = []command{
 				)
 				return err
 			}
-			_, err := laughters.UpdateOne(
+			var (
+				nLghter Laughter
+				newLead int64 = nLghter.Leader
+			)
+			err := laughters.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&nLghter)
+			if nLghter.Leader == update.Message.From.ID {
+				for _, i := range nLghter.Members {
+					if i != update.Message.From.ID {
+						newLead = i
+					}
+				}
+			}
+			_, err = laughters.UpdateOne(
 				ctx,
 				bson.M{"members": update.Message.From.ID},
 				bson.M{
 					"$pull": bson.M{
 						"members": update.Message.From.ID,
+					},
+					"$set": bson.M{
+						"leader": newLead,
 					},
 				},
 			)
@@ -1281,6 +1296,174 @@ var commands = []command{
 				update.Message.Chat.ID,
 			)
 			return err
+		},
+	},
+	{
+		Name: "laughter_status",
+		Is: func(args []string, update tg.Update) bool {
+			if len(args) < 2 {
+				return false
+			}
+			return strings.ToLower(strings.Join(args[:2], " ")) == "статус ржения"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+
+			var nLghter Laughter
+
+			switch len(args) {
+			case 2:
+				if !isInUsers {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"у вас нет вомбата, чтобы посмотреть его статус ржения. "+
+							"добавьте никнейм другого вомбата или `чат` к команде, чтобы узнать статус вомбата или этого чата",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+				if c, err := laughters.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+					return err
+				} else if c == 0 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"Вы не участвуете ни в одном ржении",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+
+				err = laughters.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&nLghter)
+
+				if err != nil {
+					return err
+				}
+			case 3:
+				if args[2] == "чат" {
+					if !isGroup(update.Message) {
+						_, err = bot.ReplyWithMessage(
+							update.Message.MessageID,
+							"ржение бывает только в групповых чатах",
+							update.Message.Chat.ID,
+						)
+						return err
+					}
+
+					if c, err := laughters.CountDocuments(ctx, bson.M{"_id": update.Message.Chat.ID}); err != nil {
+						return err
+					} else if c == 0 {
+						_, err = bot.ReplyWithMessage(
+							update.Message.MessageID,
+							"В чате нет ни одного активного ржения",
+							update.Message.Chat.ID,
+						)
+						return err
+					}
+
+					err = laughters.FindOne(ctx, bson.M{"_id": update.Message.Chat.ID}).Decode(&nLghter)
+
+					if err != nil {
+						return err
+					}
+
+					if !nLghter.Active {
+						_, err = bot.ReplyWithMessage(
+							update.Message.MessageID,
+							"В чате нет ни одного активного ржения",
+							update.Message.Chat.ID,
+						)
+						return err
+					}
+				} else {
+					if c, err := users.CountDocuments(ctx, bson.M{"name": cins(args[2])}); err != nil {
+						return err
+					} else if c == 0 {
+						_, err = bot.ReplyWithMessage(
+							update.Message.MessageID,
+							"Вомбата с таким именем не найдено",
+							update.Message.Chat.ID,
+						)
+						return err
+					}
+
+					var tWomb User
+
+					err = users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&tWomb)
+					if err != nil {
+						return err
+					}
+
+					if c, err := laughters.CountDocuments(ctx, bson.M{"members": tWomb.ID}); err != nil {
+						return err
+					} else if c == 0 {
+						_, err = bot.ReplyWithMessage(
+							update.Message.MessageID,
+							"Вомбат "+tWomb.Name+" не участвуете ни в одном ржении",
+							update.Message.Chat.ID,
+						)
+						return err
+					}
+
+					err = laughters.FindOne(ctx, bson.M{"members": tWomb.ID}).Decode(&nLghter)
+				}
+			default:
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"чёт многовато аргументов",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var builder strings.Builder
+
+			builder.WriteString("ℹ Ржение:\n")
+
+			var wombs = make([]User, 0)
+
+			for _, memb := range nLghter.Members {
+				var tWomb User
+				err = users.FindOne(ctx, bson.M{"_id": memb}).Decode(&tWomb)
+				if err != nil {
+					continue
+				}
+				wombs = append(wombs, tWomb)
+			}
+
+			builder.WriteString("  Участники ржения:\n")
+
+			for _, tWomb := range wombs {
+				builder.WriteString(
+					fmt.Sprintf("   - [%s](tg://user?id=%d)", tWomb.Name, tWomb.ID),
+				)
+				if tWomb.ID == nLghter.Leader {
+					builder.WriteString(" (Лидер)")
+				}
+				builder.WriteRune('\n')
+			}
+			builder.WriteRune('\n')
+
+			if e := time.Now().Sub(nLghter.LastStartTime); e < 24*time.Hour {
+				left := (24 * time.Hour) - e
+				builder.WriteString(
+					fmt.Sprintf(
+						"До следующей возможности запустить ржение осталось %d часов %d минут",
+						int64(left.Hours()), int64(left.Minutes())-int64(left.Hours())*60,
+					),
+				)
+			}
+
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				builder.String(),
+				update.Message.Chat.ID,
+				MarkdownParseModeMessage,
+			)
+
+			return nil
 		},
 	},
 	// subcommand handlers
