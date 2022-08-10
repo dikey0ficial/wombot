@@ -4,6 +4,7 @@ import (
 	"fmt"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"math"
 	"math/rand"
@@ -61,8 +62,7 @@ var commands = []command{
 		Name: "bad_update_check",
 		Is: func(args []string, update tg.Update) bool {
 			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil ||
-				args == nil || len(args) == 0 || update.Message.Photo == nil ||
-				len(update.Message.Photo) == 0
+				args == nil || len(args) == 0
 		},
 		Action: func([]string, tg.Update, User) error {
 			return nil
@@ -1476,6 +1476,111 @@ var commands = []command{
 		Name: "start_laughter",
 		Is: func(args []string, update tg.Update) bool {
 			return isInList(strings.ToLower(strings.Join(args, " ")), []string{"начать ржение", "ржение старт", "ржём"})
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if c, err := laughters.CountDocuments(ctx, bson.M{"leader": update.Message.From.ID}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Запускать ржение можно только лидеру ржения (посмотреть, кто это, можно с помощью команды `ржение статус`)",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var nLghter Laughter
+
+			err := laughters.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&nLghter)
+			if err != nil {
+				return err
+			}
+
+			limgs, err := getImgs(imgsC, "laughter")
+
+			mid, err := bot.ReplyWithPhoto(
+				update.Message.MessageID,
+				randImg(limgs),
+				"Да начнётся ржение!!!",
+				update.Message.Chat.ID,
+				MarkdownParseModePhoto,
+			)
+
+			if err != nil {
+				return err
+			}
+
+			time.Sleep(5 * time.Second)
+
+			var (
+				msgb  strings.Builder
+				bulk  = []mongo.WriteModel{}
+				tWomb User
+				errc  int
+			)
+			for _, m := range nLghter.Members {
+				err = users.FindOne(ctx, bson.M{"_is": m}).Decode(&tWomb)
+				if err != nil {
+					msgb.WriteString(fmt.Sprintf(" - Проблемы с участником под ID %d. После ржения ответьте на это сообщение командой /admin\n", m))
+				} else {
+					msgb.WriteString(fmt.Sprintf(" - Вомбат [%s](%d) ", tWomb.Name, tWomb.ID))
+					mod := mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": tWomb.ID})
+					switch rand.Intn(7) {
+					case 0:
+						amount := tWomb.Money/6 + uint32(rand.Intn(int(tWomb.Money/6)))
+						mod.SetUpdate(bson.M{
+							"$inc": bson.M{
+								"money": amount,
+							},
+						})
+						msgb.WriteString(fmt.Sprintf("получает %d шишей!", amount))
+					case 1:
+						amount := uint16(rand.Intn(25))
+						mod.SetUpdate(bson.M{
+							"$inc": bson.M{
+								"xp": amount,
+							},
+						})
+						msgb.WriteString(fmt.Sprintf("стал мудрее на %d XP!", amount))
+					case 2:
+						amount := tWomb.Health/6 + uint32(rand.Intn(int(tWomb.Health/6)))
+						mod.SetUpdate(bson.M{
+							"$inc": bson.M{
+								"health": amount,
+							},
+						})
+						msgb.WriteString(fmt.Sprintf("оздоровился на %d единиц!", amount))
+					case 3:
+						amount := tWomb.Force/6 + uint32(rand.Intn(int(tWomb.Force/6)))
+						mod.SetUpdate(bson.M{
+							"$inc": bson.M{
+								"force": amount,
+							},
+						})
+						msgb.WriteString(fmt.Sprintf("стал мощнее на %d единиц!", amount))
+
+					}
+					msgb.WriteRune('\n')
+					bulk = append(bulk, mod)
+				}
+				err = bot.EditMessage(
+					mid,
+					msgb.String(),
+					update.Message.Chat.ID,
+				)
+
+				if err != nil {
+					errc++
+					if errc == 3 {
+						return err
+					}
+				} else {
+					errc = 0
+				}
+				time.Sleep(2 * time.Second)
+			}
+
+			return nil
 		},
 	},
 	// subcommand handlers

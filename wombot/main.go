@@ -163,7 +163,7 @@ SELECTFOR:
 
 				if update.Message != nil {
 					args = strings.Fields(update.Message.Text)
-					if args == nil || len(args) == 0 {
+					if update.Message.Text == "" {
 						args = strings.Fields(update.Message.Caption)
 					}
 					messID = update.Message.MessageID
