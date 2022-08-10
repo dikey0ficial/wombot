@@ -13,13 +13,18 @@ import (
 )
 
 // from@chat/messageid: text
-func logMessage(msg tg.Message) {
+func logMessage(upd tg.Update) {
+	msg := upd.Message
+	txt := msg.Text
+	if txt == "" {
+		txt = "(cap) " + msg.Caption
+	}
 	messl.Printf(
 		"%d(@%s) @ %d(@%s)/%d: %s\n",
 		msg.From.ID, msg.From.UserName,
 		msg.Chat.ID, msg.Chat.UserName,
 		msg.MessageID,
-		strings.Replace(msg.Text, "\n", "\\n", -1),
+		strings.Replace(txt, "\n", "\\n", -1),
 	)
 }
 

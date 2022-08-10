@@ -163,20 +163,24 @@ SELECTFOR:
 
 				if update.Message != nil {
 					args = strings.Fields(update.Message.Text)
+					if args == nil || len(args) == 0 {
+						args = strings.Fields(update.Message.Caption)
+					}
 					messID = update.Message.MessageID
 					_ = users.FindOne(ctx, bson.M{"_id": update.Message.From.ID}).Decode(&womb)
 
 					if conf.LogLevel == 2 {
-						logMessage(*update.Message)
+						logMessage(update)
 					}
 				}
 
 				for _, cmd := range commands {
+					cmdName = "[check] " + cmd.Name
 					if cmd.Is(args, update) {
 						cmdName = cmd.Name
 
 						if conf.LogLevel == 1 && update.Message != nil {
-							logMessage(*update.Message)
+							logMessage(update)
 						}
 
 						err := cmd.Action(args, update, womb)

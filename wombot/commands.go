@@ -60,7 +60,9 @@ var commands = []command{
 	{
 		Name: "bad_update_check",
 		Is: func(args []string, update tg.Update) bool {
-			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil || args == nil || len(args) == 0
+			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil ||
+				args == nil || len(args) == 0 || update.Message.Photo == nil ||
+				len(update.Message.Photo) == 0
 		},
 		Action: func([]string, tg.Update, User) error {
 			return nil
@@ -1304,7 +1306,11 @@ var commands = []command{
 			if len(args) < 2 {
 				return false
 			}
-			return strings.ToLower(strings.Join(args[:2], " ")) == "статус ржения"
+
+			return isInList(
+				strings.ToLower(strings.Join(args[:2], " ")),
+				[]string{"статус ржения", "ржение статус", "как там ржекич"},
+			)
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
@@ -1466,6 +1472,12 @@ var commands = []command{
 			return nil
 		},
 	},
+	{
+		Name: "start_laughter",
+		Is: func(args []string, update tg.Update) bool {
+			return isInList(strings.ToLower(strings.Join(args, " ")), []string{"начать ржение", "ржение старт", "ржём"})
+		},
+	},
 	// subcommand handlers
 	{
 		Name: "attack",
@@ -1593,9 +1605,7 @@ var commands = []command{
 			return s == "bot.ReplyWithMessage" || s == "reply_to_msg"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			debl.Println("!!!")
 			if !hasTitle(3, womb.Titles) {
-				debl.Println("!!!")
 				return nil
 			} else if len(args) < 4 {
 				_, err := bot.ReplyWithMessage(update.Message.MessageID, "мало аргументов", update.Message.Chat.ID)
@@ -1639,7 +1649,7 @@ var commands = []command{
 	{
 		Name: "photo_id",
 		Is: func(args []string, update tg.Update) bool {
-			s := strings.ToLower(args[0])
+			s := strings.ToLower(strings.Join(args, " "))
 			return s == "photoid" || s == "photo_id"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
@@ -4903,7 +4913,6 @@ var devtoolsCommands = []command{
 			}
 			_, err = users.UpdateOne(ctx, bson.M{"_id": womb.ID}, bson.M{"$set": bson.M{"money": i}})
 			if err != nil {
-				debl.Println(err)
 				return err
 			}
 			_, err = bot.ReplyWithMessage(
