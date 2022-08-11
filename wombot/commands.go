@@ -1309,7 +1309,7 @@ var commands = []command{
 
 			return isInList(
 				strings.ToLower(strings.Join(args[:2], " ")),
-				[]string{"статус ржения", "ржение статус", "как там ржекич"},
+				[]string{"статус ржения", "ржение статус"},
 			)
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
@@ -1519,15 +1519,15 @@ var commands = []command{
 				errc  int
 			)
 			for _, m := range nLghter.Members {
-				err = users.FindOne(ctx, bson.M{"_is": m}).Decode(&tWomb)
+				err = users.FindOne(ctx, bson.M{"_id": m}).Decode(&tWomb)
 				if err != nil {
 					msgb.WriteString(fmt.Sprintf(" - Проблемы с участником под ID %d. После ржения ответьте на это сообщение командой /admin\n", m))
 				} else {
-					msgb.WriteString(fmt.Sprintf(" - Вомбат [%s](%d) ", tWomb.Name, tWomb.ID))
+					msgb.WriteString(fmt.Sprintf(" - Вомбат [%s](tg://user?id=%d) ", tWomb.Name, tWomb.ID))
 					mod := mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": tWomb.ID})
-					switch rand.Intn(7) {
+					switch rand.Intn(5) {
 					case 0:
-						amount := tWomb.Money/6 + uint32(rand.Intn(int(tWomb.Money/6)))
+						amount := tWomb.Money/6 + uint32(rand.Intn(int(tWomb.Money/6)+1))
 						mod.SetUpdate(bson.M{
 							"$inc": bson.M{
 								"money": amount,
@@ -1543,7 +1543,7 @@ var commands = []command{
 						})
 						msgb.WriteString(fmt.Sprintf("стал мудрее на %d XP!", amount))
 					case 2:
-						amount := tWomb.Health/6 + uint32(rand.Intn(int(tWomb.Health/6)))
+						amount := tWomb.Health/6 + uint32(rand.Intn(int(tWomb.Health/6)+1))
 						mod.SetUpdate(bson.M{
 							"$inc": bson.M{
 								"health": amount,
@@ -1551,22 +1551,53 @@ var commands = []command{
 						})
 						msgb.WriteString(fmt.Sprintf("оздоровился на %d единиц!", amount))
 					case 3:
-						amount := tWomb.Force/6 + uint32(rand.Intn(int(tWomb.Force/6)))
+						amount := tWomb.Force/6 + uint32(rand.Intn(int(tWomb.Force/6)+1))
 						mod.SetUpdate(bson.M{
 							"$inc": bson.M{
 								"force": amount,
 							},
 						})
 						msgb.WriteString(fmt.Sprintf("стал мощнее на %d единиц!", amount))
-
+					case 4:
+						max := 501
+						if hasTitle(6, tWomb.Titles) {
+							max = 101
+						}
+						if rand.Intn(max) == 0 {
+							amount := tWomb.Money/2 + uint32(rand.Intn(int(tWomb.Money/2)+1))
+							mod.SetUpdate(bson.M{
+								"$inc": bson.M{
+									"money": amount,
+								},
+							})
+							msgb.WriteString(fmt.Sprintf("сорвал куш в %d шишей!!!", amount))
+						} else {
+							msgb.WriteString("просто хорошо поржал!")
+							mod = nil
+						}
+					case 5:
+						if rand.Intn(1001) == 0 {
+							mod.SetUpdate(bson.M{
+								"$push": bson.M{
+									"titles": 6,
+								},
+							})
+							msgb.WriteString("получил титул `Удачливый вомбат` (ID: 6)!")
+						} else {
+							msgb.WriteString("просто хорошо поржал!")
+							mod = nil
+						}
 					}
 					msgb.WriteRune('\n')
-					bulk = append(bulk, mod)
+					if mod != nil {
+						bulk = append(bulk, mod)
+					}
 				}
-				err = bot.EditMessage(
+				err = bot.EditCaption(
 					mid,
 					msgb.String(),
 					update.Message.Chat.ID,
+					MarkdownParseModeEditCaption,
 				)
 
 				if err != nil {
@@ -1579,8 +1610,39 @@ var commands = []command{
 				}
 				time.Sleep(2 * time.Second)
 			}
+			_, err = users.BulkWrite(ctx, bulk, options.BulkWrite().SetOrdered(false))
 
-			return nil
+			if err != nil {
+				return err
+			}
+
+			_, err = laughters.UpdateOne(
+				ctx,
+				bson.M{"_id": nLghter.ChatID},
+				bson.M{
+					"$set": bson.M{
+						"active":          false,
+						"leader":          0,
+						"members":         []int64{},
+						"last_start_time": time.Now(),
+					},
+				},
+			)
+
+			if err != nil {
+				return err
+			}
+
+			msgb.WriteString("\nРжение окончено! Все изменения применены.")
+
+			err = bot.EditCaption(
+				mid,
+				msgb.String(),
+				update.Message.Chat.ID,
+				MarkdownParseModeEditCaption,
+			)
+
+			return err
 		},
 	},
 	// subcommand handlers

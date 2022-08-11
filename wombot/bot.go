@@ -76,7 +76,21 @@ func (b Bot) ReplyWithPhoto(messID int, id, caption string, chatID int64, option
 	return b.SendPhoto(id, caption, chatID, append(options, PhotoSetReply(messID))...)
 }
 
-func (b Bot) EditMessage(messID int, newText string, chatID int64) error {
+type EditMessageOption func(*tg.EditMessageTextConfig) error
+
+func MarkdownParseModeEditText(msg *tg.EditMessageTextConfig) error {
+	msg.ParseMode = "markdown"
+	return nil
+}
+
+func SetWebPagePreviewEditText(wpp bool) EditMessageOption {
+	return func(msg *tg.EditMessageTextConfig) error {
+		msg.DisableWebPagePreview = !wpp
+		return nil
+	}
+}
+
+func (b Bot) EditMessage(messID int, newText string, chatID int64, options ...EditMessageOption) error {
 	editConfig := tg.EditMessageTextConfig{
 		BaseEdit: tg.BaseEdit{
 			ChatID:    chatID,
@@ -84,6 +98,39 @@ func (b Bot) EditMessage(messID int, newText string, chatID int64) error {
 		},
 		Text: newText,
 	}
+
+	for _, option := range options {
+		if err := option(&editConfig); err != nil {
+			return err
+		}
+	}
+
+	_, err := bot.Request(editConfig)
+	return err
+}
+
+type EditCaptionOption func(*tg.EditMessageCaptionConfig) error
+
+func MarkdownParseModeEditCaption(msg *tg.EditMessageCaptionConfig) error {
+	msg.ParseMode = "markdown"
+	return nil
+}
+
+func (b Bot) EditCaption(messID int, newText string, chatID int64, options ...EditCaptionOption) error {
+	editConfig := tg.EditMessageCaptionConfig{
+		BaseEdit: tg.BaseEdit{
+			ChatID:    chatID,
+			MessageID: messID,
+		},
+		Caption: newText,
+	}
+
+	for _, option := range options {
+		if err := option(&editConfig); err != nil {
+			return err
+		}
+	}
+
 	_, err := bot.Request(editConfig)
 	return err
 }
