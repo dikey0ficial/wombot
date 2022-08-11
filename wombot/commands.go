@@ -1221,12 +1221,28 @@ var commands = []command{
 					return err
 				}
 			} else {
+				var setM = bson.M{"active": true}
+
+				if c, err := laughters.CountDocuments(
+					ctx,
+					bson.M{
+						"$and": bson.A{
+							bson.M{"_id": update.Message.Chat.ID},
+							bson.M{"leader": 0},
+						},
+					},
+				); err != nil {
+					return err
+				} else if c != 0 {
+					setM["leader"] = update.Message.From.ID
+				}
 				_, err = laughters.UpdateOne(
 					ctx,
 					bson.M{
 						"_id": update.Message.Chat.ID,
 					},
 					bson.M{
+						"$set": setM,
 						"$push": bson.M{
 							"members": update.Message.From.ID,
 						},
