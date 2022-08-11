@@ -1512,6 +1512,18 @@ var commands = []command{
 				return err
 			}
 
+			if e := time.Now().Sub(nLghter.LastStartTime); e < 24*time.Hour {
+				left := (24 * time.Hour) - e
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"До следующей возможности запустить ржение осталось %d часов %d минут",
+						int64(left.Hours()), int64(left.Minutes())-int64(left.Hours())*60,
+					),
+					update.Message.Chat.ID,
+				)
+			}
+
 			limgs, err := getImgs(imgsC, "laughter")
 
 			mid, err := bot.ReplyWithPhoto(
