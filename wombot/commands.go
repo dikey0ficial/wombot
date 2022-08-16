@@ -1556,7 +1556,7 @@ var commands = []command{
 					mod := mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": tWomb.ID})
 					switch rand.Intn(5) {
 					case 0:
-						amount := tWomb.Money/6 + uint32(rand.Intn(int(tWomb.Money/6)+1))
+						amount := 1 + tWomb.Money/6 + uint32(rand.Intn(int(tWomb.Money/6)+1))
 						mod.SetUpdate(bson.M{
 							"$inc": bson.M{
 								"money": amount,
@@ -1572,7 +1572,7 @@ var commands = []command{
 						})
 						msgb.WriteString(fmt.Sprintf("стал мудрее на %d XP!", amount))
 					case 2:
-						amount := tWomb.Health/6 + uint32(rand.Intn(int(tWomb.Health/6)+1))
+						amount := 1 + tWomb.Health/6 + uint32(rand.Intn(int(tWomb.Health/6)+1))
 						mod.SetUpdate(bson.M{
 							"$inc": bson.M{
 								"health": amount,
@@ -1580,7 +1580,7 @@ var commands = []command{
 						})
 						msgb.WriteString(fmt.Sprintf("оздоровился на %d единиц!", amount))
 					case 3:
-						amount := tWomb.Force/6 + uint32(rand.Intn(int(tWomb.Force/6)+1))
+						amount := 1 + tWomb.Force/6 + uint32(rand.Intn(int(tWomb.Force/6)+1))
 						mod.SetUpdate(bson.M{
 							"$inc": bson.M{
 								"force": amount,
@@ -1593,7 +1593,7 @@ var commands = []command{
 							max = 101
 						}
 						if rand.Intn(max) == 0 {
-							amount := tWomb.Money/2 + uint32(rand.Intn(int(tWomb.Money/2)+1))
+							amount := 1 + tWomb.Money/2 + uint32(rand.Intn(int(tWomb.Money/2)+1))
 							mod.SetUpdate(bson.M{
 								"$inc": bson.M{
 									"money": amount,
