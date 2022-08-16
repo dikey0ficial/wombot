@@ -1522,6 +1522,7 @@ var commands = []command{
 					),
 					update.Message.Chat.ID,
 				)
+				return err
 			}
 
 			limgs, err := getImgs(imgsC, "laughter")
