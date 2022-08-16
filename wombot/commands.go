@@ -2080,7 +2080,7 @@ var attackCommands = []command{
 			}
 			ID = tWomb.ID
 			if ID == int64(update.Message.MessageID) {
-				_, err = bot.ReplyWithMessage(update.Message.MessageID, "„Главная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", update.Message.From.ID)
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "„Главная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", update.Message.Chat.ID)
 				return err
 			}
 			err = users.FindOne(ctx, bson.M{"_id": ID}).Decode(&tWomb)
@@ -2088,7 +2088,7 @@ var attackCommands = []command{
 				return err
 			}
 			if tWomb.ID == womb.ID {
-				_, err = bot.ReplyWithMessage(update.Message.MessageID, "„Главная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", update.Message.From.ID)
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "„Главная борьба в нашей жизни — борьба с самим собой“ (c) какой-то философ", update.Message.Chat.ID)
 				return err
 			} else if tWomb.Sleep {
 				_, err = bot.ReplyWithMessage(
