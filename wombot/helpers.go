@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"math/rand"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -269,4 +270,12 @@ func randomString(arr ...string) string {
 		return ""
 	}
 	return arr[rand.Intn(len(arr))]
+}
+
+func getVer() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok || bi == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s, %s", bi.Main.Version, bi.GoVersion)
 }

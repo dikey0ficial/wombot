@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 var (
@@ -31,6 +32,12 @@ var (
 		LogLevel  uint8 `toml:"log_level" env:"LOGLVL"`
 		SupChatID int64 `toml:"support_chat_id" env:"SUPCHATID"`
 	}{}
+
+	StatusInfo = struct {
+		Version   string
+		StartTime time.Time
+	}{}
+
 	bot Bot
 
 	mongoClient                            *mongo.Client
@@ -101,8 +108,11 @@ func init() {
 		titles = append(titles, nextOne)
 	}
 	imgsC = db.Collection("imgs")
-
 	laughters = db.Collection("laughter")
+
+	if StatusInfo.Version == "" {
+		StatusInfo.Version = getVer()
+	}
 }
 
 func main() {
@@ -134,6 +144,8 @@ func main() {
 		signals    = []os.Signal{syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP}
 	)
 	signal.Notify(signalChan, signals...)
+
+	StatusInfo.StartTime = time.Now()
 
 	infl.Println("==start==")
 

@@ -1,13 +1,15 @@
 package main
 
 import (
-	"fmt"
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"fmt"
 	"math"
 	"math/rand"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1777,6 +1779,34 @@ var commands = []command{
 		},
 	},
 	// service commands
+	//     everyone:
+	{
+		Name: "wombot_status",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(strings.Join(args, " ")) == "вомбот статус"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var msgB strings.Builder
+
+			msgB.WriteString("🤖 Информация о работающем вомботе:\n")
+
+			if StatusInfo.Version != "" {
+				msgB.WriteString(fmt.Sprintf(" — Версия: %s\n", StatusInfo.Version))
+			}
+
+			msgB.WriteString(fmt.Sprintf(" — Аптайм: %s\n", time.Now().Sub(StatusInfo.StartTime)))
+			msgB.WriteString(fmt.Sprintf(" — Горутин запущено: %d\n", runtime.NumGoroutine()))
+
+			_, err := bot.ReplyWithMessage(
+				update.Message.MessageID,
+				msgB.String(),
+				update.Message.Chat.ID,
+			)
+
+			return err
+		},
+	},
+	//     only admin:
 	{
 		Name: "send_msg",
 		Is: func(args []string, update tg.Update) bool {
