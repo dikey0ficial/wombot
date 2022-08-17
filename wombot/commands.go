@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -192,7 +193,15 @@ var commands = []command{
 			strTitles := ""
 			tCount := len(tWomb.Titles)
 			if tCount != 0 {
-				for _, id := range tWomb.Titles {
+				titles := func(in []uint16) []int {
+					var res = make([]int, len(in))
+					for i, el := range in {
+						res[i] = int(el)
+					}
+					return res
+				}(tWomb.Titles)
+				sort.Ints(titles)
+				for _, id := range titles {
 					rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": id})
 					if err != nil {
 						return err
