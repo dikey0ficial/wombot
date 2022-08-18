@@ -5248,8 +5248,13 @@ var devtoolsCommands = []command{
 			return strings.ToLower(args[1]) == "invite"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			if len(args) == 2 {
-				return nil
+			if len(args) != 3 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"слишком мало или много аргументов",
+					update.Message.Chat.ID,
+				)
+				return err
 			}
 			_, err := users.UpdateOne(ctx, bson.M{"name": cins(args[2])}, bson.M{"$push": bson.M{"titles": 0}})
 			if err != nil {
