@@ -43,8 +43,7 @@ var (
 	mongoClient                            *mongo.Client
 	db                                     *mongo.Database
 	users, attacks, bank, clans, clattacks *mongo.Collection
-	titlesC, laughters                     *mongo.Collection
-	titles                                 []Title
+	laughters                              *mongo.Collection
 )
 
 func init() {
@@ -92,21 +91,6 @@ func init() {
 	clans = db.Collection("clans")
 	clattacks = db.Collection("clattacks")
 
-	titlesC = db.Collection("titles")
-	cur, err := titlesC.Find(ctx, bson.M{})
-	if err != nil {
-		errl.Println(err)
-	}
-	defer cur.Close(ctx)
-	for cur.Next(ctx) {
-		var nextOne Title
-		err := cur.Decode(&nextOne)
-		if err != nil {
-			errl.Printf("Lost title because error: %v\n", err)
-			continue
-		}
-		titles = append(titles, nextOne)
-	}
 	laughters = db.Collection("laughter")
 
 	if StatusInfo.Version == "" {

@@ -204,19 +204,12 @@ var commands = []command{
 				}(tWomb.Titles)
 				sort.Ints(titles)
 				for _, id := range titles {
-					rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": id})
-					if err != nil {
-						return err
-					}
-					if rCount == 0 {
-						strTitles += fmt.Sprintf("Ошибка: титула с ID %d нет (ответьте командой /admin) |", id)
+					elem, ok := Titles[uint16(id)]
+					if !ok {
+						strTitles += fmt.Sprintf("Ошибка: титула с ID %d не найдено (ответьте командой /admin) |", id)
 						continue
 					}
-					elem := Title{}
-					err = titlesC.FindOne(ctx, bson.M{"_id": id}).Decode(&elem)
-					if err != nil {
-						return err
-					}
+
 					strTitles += fmt.Sprintf("%s (ID: %d) | ", elem.Name, id)
 				}
 				strTitles = strings.TrimSuffix(strTitles, " | ")
@@ -847,19 +840,12 @@ var commands = []command{
 			} else {
 			}
 			ID := uint16(i)
-			rCount, err := titlesC.CountDocuments(ctx, bson.M{"_id": ID})
-			if err != nil {
-				return err
-			}
-			if rCount == 0 {
+			elem, ok := Titles[ID]
+			if !ok {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, fmt.Sprintf("Ошибка: не найдено титула по ID %d", ID), update.Message.Chat.ID)
 				return err
 			}
-			elem := Title{}
-			err = titlesC.FindOne(ctx, bson.M{"_id": ID}).Decode(&elem)
-			if err != nil {
-				return err
-			}
+
 			_, err = bot.ReplyWithMessage(update.Message.MessageID, fmt.Sprintf("%s | ID: %d\n%s", elem.Name, ID, elem.Desc), update.Message.Chat.ID)
 			return err
 		},
