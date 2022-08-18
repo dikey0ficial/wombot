@@ -29,12 +29,6 @@ type Attack struct {
 	To   int64  `bson:"to"`
 }
 
-// Imgs реализует группу картинок
-type Imgs struct {
-	ID     string   `bson:"_id"`
-	Images []string `bson:"imgs"`
-}
-
 // Banked реализет вомбанковскую ячейку
 type Banked struct {
 	ID    int64  `bson:"_id"`

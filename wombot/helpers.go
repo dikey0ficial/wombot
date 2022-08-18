@@ -121,14 +121,12 @@ func isInClattacks(id string, attacks *mongo.Collection) (isIn, isFrom bool) {
 	return isIn, isFrom
 }
 
-var errNoAttack error = fmt.Errorf("there aren't any attacks")
-
 func getAttackByID(aid string, attacks *mongo.Collection) (at Attack, err error) {
 	c, err := attacks.CountDocuments(ctx, bson.M{"_id": aid})
 	if err != nil {
 		return Attack{}, err
 	} else if c < 1 {
-		return Attack{}, errNoAttack
+		return Attack{}, ErrNoAttack
 	}
 	err = attacks.FindOne(ctx, bson.M{"_id": aid}).Decode(&at)
 	if err != nil {
@@ -150,7 +148,7 @@ func getAttackByWomb(id int64, isFrom bool, attacks *mongo.Collection) (at Attac
 	if err != nil {
 		return Attack{}, err
 	} else if c < 1 {
-		return Attack{}, errNoAttack
+		return Attack{}, ErrNoAttack
 	}
 	err = attacks.FindOne(ctx, fil).Decode(&at)
 	if err != nil {
@@ -159,21 +157,9 @@ func getAttackByWomb(id int64, isFrom bool, attacks *mongo.Collection) (at Attac
 	return at, nil
 }
 
-var errNoImgs = fmt.Errorf("getImgs: no groups with this name")
-
-func getImgs(imgsC *mongo.Collection, name string) (imgs Imgs, err error) {
-	if rCount, err := imgsC.CountDocuments(ctx, bson.M{"_id": name}); err != nil {
-		return imgs, err
-	} else if rCount == 0 {
-		return imgs, errNoImgs
-	}
-	err = imgsC.FindOne(ctx, bson.M{"_id": name}).Decode(&imgs)
-	return imgs, err
-}
-
-func randImg(imgs Imgs) string {
+func randImg(imgs []string) string {
 	rand.Seed(time.Now().Unix())
-	return imgs.Images[rand.Intn(len(imgs.Images))]
+	return imgs[rand.Intn(len(imgs))]
 }
 
 func cins(s string) primitive.Regex {

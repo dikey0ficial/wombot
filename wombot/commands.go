@@ -229,9 +229,9 @@ var commands = []command{
 			} else {
 				sl = "Не спит"
 			}
-			abimg, err := getImgs(imgsC, "about")
-			if err != nil {
-				return err
+			abimg, ok := Images["about"]
+			if !ok {
+				return ErrNoImgs
 			}
 			_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(abimg), fmt.Sprintf(
 				"Вомбат [%s](tg://user?id=%d) %s\nТитулы: %s\n 👁 %d XP\n ❤ %d здоровья\n ⚡ %d мощи\n 💰 %d шишей при себе\n 💤 %s",
@@ -371,9 +371,9 @@ var commands = []command{
 				return err
 			}
 			iiuCache.Put(update.Message.From.ID, true)
-			newimg, err := getImgs(imgsC, "new")
-			if err != nil {
-				return err
+			newimg, ok := Images["new"]
+			if !ok {
+				return ErrNoImgs
 			}
 			_, err = bot.ReplyWithPhoto(update.Message.MessageID,
 				randImg(newimg), fmt.Sprintf(
@@ -393,11 +393,11 @@ var commands = []command{
 			return false
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			schweineImgs, err := getImgs(imgsC, "schweine")
-			if err != nil {
-				return err
+			schweineImgs, ok := Images["schweine"]
+			if !ok {
+				return ErrNoImgs
 			}
-			_, err = bot.ReplyWithPhoto(update.Message.MessageID,
+			_, err := bot.ReplyWithPhoto(update.Message.MessageID,
 				randImg(schweineImgs),
 				"АХТУНГ ШВАЙНЕ УИИИИИИИИИИИИИИИИИИИИИИИИИ",
 				update.Message.Chat.ID,
@@ -452,9 +452,9 @@ var commands = []command{
 				return err
 			}
 			iiuCache.Put(update.Message.From.ID, false)
-			kill, err := getImgs(imgsC, "kill")
-			if err != nil {
-				return err
+			kill, ok := Images["kill"]
+			if !ok {
+				return ErrNoImgs
 			}
 			_, err = bot.ReplyWithPhoto(update.Message.MessageID,
 				randImg(kill), "Вы уничтожили вомбата в количестве 1 штука. Вы - нехорошее существо", update.Message.Chat.ID,
@@ -779,9 +779,9 @@ var commands = []command{
 					_, err = bot.ReplyWithMessage(update.Message.MessageID, "Слишком много аргументов!", update.Message.Chat.ID)
 					return err
 				} else if womb.Money < 256 {
-					leps, err := getImgs(imgsC, "leps")
-					if err != nil {
-						return err
+					leps, ok := Images["leps"]
+					if !ok {
+						return ErrNoImgs
 					}
 					_, err = bot.ReplyWithPhoto(update.Message.MessageID,
 						randImg(leps),
@@ -790,9 +790,9 @@ var commands = []command{
 					)
 					return err
 				}
-				qwess, err := getImgs(imgsC, "qwess")
-				if err != nil {
-					return err
+				qwess, ok := Images["qwess"]
+				if !ok {
+					return ErrNoImgs
 				}
 				if !(hasTitle(2, womb.Titles)) {
 					womb.Titles = append(womb.Titles, 2)
@@ -886,9 +886,9 @@ var commands = []command{
 			if err != nil {
 				return err
 			}
-			sleep, err := getImgs(imgsC, "sleep")
-			if err != nil {
-				return err
+			sleep, ok := Images["sleep"]
+			if !ok {
+				return ErrNoImgs
 			}
 			_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(sleep), "Вы легли спать. Спокойного сна!", update.Message.Chat.ID)
 			return err
@@ -963,9 +963,9 @@ var commands = []command{
 			if err != nil {
 				return err
 			}
-			unsleep, err := getImgs(imgsC, "unsleep")
-			if err != nil {
-				return err
+			unsleep, ok := Images["unsleep"]
+			if !ok {
+				return ErrNoImgs
 			}
 			_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(unsleep), msg, update.Message.Chat.ID)
 			return err
@@ -1536,7 +1536,11 @@ var commands = []command{
 				return err
 			}
 
-			limgs, err := getImgs(imgsC, "laughter")
+			limgs, ok := Images["laughter"]
+
+			if !ok {
+				return ErrNoImgs
+			}
 
 			mid, err := bot.ReplyWithPhoto(
 				update.Message.MessageID,
@@ -2063,7 +2067,7 @@ var attackCommands = []command{
 			)
 			if is, isFrom := isInAttacks(update.Message.From.ID, attacks); isFrom {
 				at, err := getAttackByWomb(update.Message.From.ID, true, attacks)
-				if err != nil && err != errNoAttack {
+				if err != nil {
 					return err
 				}
 				var aWomb User
@@ -2082,7 +2086,7 @@ var attackCommands = []command{
 				return err
 			} else if is {
 				at, err := getAttackByWomb(update.Message.From.ID, false, attacks)
-				if err != nil && err != errNoAttack {
+				if err != nil {
 					return err
 				}
 				var aWomb User
@@ -2142,7 +2146,7 @@ var attackCommands = []command{
 				return err
 			} else if is, isFrom := isInAttacks(ID, attacks); isFrom {
 				at, err := getAttackByWomb(ID, true, attacks)
-				if err != nil && err != errNoAttack {
+				if err != nil {
 					return err
 				}
 				var aWomb User
@@ -2161,7 +2165,7 @@ var attackCommands = []command{
 				return err
 			} else if is {
 				at, err := getAttackByWomb(int64(update.Message.MessageID), false, attacks)
-				if err != nil && err != errNoAttack {
+				if err != nil {
 					return err
 				}
 				var aWomb User
@@ -2247,13 +2251,13 @@ var attackCommands = []command{
 			if err != nil {
 				return err
 			}
-			can0, err := getImgs(imgsC, "cancel_0")
-			if err != nil {
-				return err
+			can0, ok := Images["cancel_0"]
+			if !ok {
+				return ErrNoImgs
 			}
-			can1, err := getImgs(imgsC, "cancel_1")
-			if err != nil {
-				return err
+			can1, ok := Images["cancel_1"]
+			if !ok {
+				return ErrNoImgs
 			}
 			if at.From == int64(update.Message.From.ID) {
 				_, err = bot.ReplyWithPhoto(update.Message.MessageID, randImg(can0), "Вы отменили атаку", update.Message.Chat.ID)
@@ -2328,9 +2332,9 @@ var attackCommands = []command{
 			if err != nil {
 				return err
 			}
-			atimgs, err := getImgs(imgsC, "attacks")
-			if err != nil {
-				return err
+			atimgs, ok := Images["attacks"]
+			if !ok {
+				return ErrNoImgs
 			}
 			im := randImg(atimgs)
 			ph1, err := bot.ReplyWithPhoto(update.Message.MessageID, im, "", update.Message.Chat.ID)
@@ -4680,15 +4684,15 @@ var clanAttackCommands = []command{
 			if err != nil {
 				return err
 			}
-			can0, err := getImgs(imgsC, "cancel_0")
-			if err != nil {
-				return err
+			can0, ok := Images["cancel_0"]
+			if !ok {
+				return ErrNoImgs
 			}
-			var can1 Imgs
+			var can1 []string
 			if send {
-				can1, err = getImgs(imgsC, "cancel_1")
-				if err != nil {
-					return err
+				can1, ok = Images["cancel_1"]
+				if !ok {
+					return ErrNoImgs
 				}
 			}
 			_, err = bot.ReplyWithPhoto(
@@ -4820,9 +4824,9 @@ var clanAttackCommands = []command{
 					}
 				}
 			}
-			atimgs, err := getImgs(imgsC, "attacks")
-			if err != nil {
-				return err
+			atimgs, ok := Images["attacks"]
+			if !ok {
+				return ErrNoImgs
 			}
 			im := randImg(atimgs)
 			ph1, err := bot.ReplyWithPhoto(update.Message.MessageID, im, "", update.Message.Chat.ID)

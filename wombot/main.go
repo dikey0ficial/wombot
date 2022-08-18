@@ -43,7 +43,7 @@ var (
 	mongoClient                            *mongo.Client
 	db                                     *mongo.Database
 	users, attacks, bank, clans, clattacks *mongo.Collection
-	titlesC, imgsC, laughters              *mongo.Collection
+	titlesC, laughters                     *mongo.Collection
 	titles                                 []Title
 )
 
@@ -107,7 +107,6 @@ func init() {
 		}
 		titles = append(titles, nextOne)
 	}
-	imgsC = db.Collection("imgs")
 	laughters = db.Collection("laughter")
 
 	if StatusInfo.Version == "" {
