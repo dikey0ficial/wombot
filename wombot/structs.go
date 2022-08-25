@@ -37,7 +37,8 @@ type Banked struct {
 
 // ClanSettings реализует настройки клана
 type ClanSettings struct {
-	AviableToJoin bool `bson:"aviable_to_join"`
+	AviableToJoin     bool `bson:"aviable_to_join"`
+	UseRequestsToJoin bool `bson:"use_requests_to_join"`
 }
 
 // Clattack реализует клановую атаку
@@ -66,6 +67,7 @@ type Clan struct {
 	Members        []int64      `bson:"members"`
 	Banned         []int64      `bson:"banned"`
 	GroupID        int64        `bson:"group_id"`
+	JoinRequests   []int64      `bson:"join_reqs"`
 	LastRewardTime time.Time    `bson:"last_reward_time"`
 	Settings       ClanSettings `bson:"settings"`
 }

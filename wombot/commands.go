@@ -32,26 +32,30 @@ var commands = []command{
 			return false
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			isInUsers, err := getIsInUsers(update.Message.NewChatMembers[0].ID)
-			if err != nil {
-				return err
-			}
+
 			if update.Message.NewChatMembers[0].ID == bot.Self.ID {
-				_, err = bot.ReplyWithMessage(
+				_, err := bot.ReplyWithMessage(
 					update.Message.MessageID,
 					fmt.Sprintf(randomString(
-						"всем привет чат!1!1! /help@%s для инфы о коммандочках :з",
+						"всем привет чат!1!1! /help@%s для инфы о коммандочках",
 						"дарова вомбэты и вомбята. я ботяра. /help@%s -- инфа",
 						"всем привет я бот /help@%s для подробностей",
 						"короче, я бот с вомбатами. подробнее: /help@%s",
 					), bot.Self.UserName),
 					update.Message.Chat.ID,
 				)
-			} else if isInUsers {
+				return err
+			}
+
+			isInUsers, err := getIsInUsers(update.Message.NewChatMembers[0].ID)
+			if err != nil {
+				return err
+			}
+			if isInUsers {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID,
-					"Здравствуйте! Я [вомбот](t.me/wombatobot) — бот с вомбатами. "+
+					"Здравствуйте! Я [вомбот](t.me/wombatobot_channel) — бот с вомбатами. "+
 						"Рекомендую Вам завести вомбата, чтобы играть "+
-						"вместе с другими участниками этого чата."+
+						"вместе с другими участниками этого чата. "+
 						"подробнее: /help@wombatobot",
 					update.Message.Chat.ID, MarkdownParseModeMessage, SetWebPagePreview(false),
 				)
@@ -136,9 +140,7 @@ var commands = []command{
 				strID = strings.TrimSpace(strings.Join(args[2:], " "))
 			} else if len(args) > 3 {
 				_, err := bot.ReplyWithMessage(update.Message.MessageID, "Слишком много аргументов!", update.Message.Chat.ID)
-				if err != nil {
-					return err
-				}
+				return err
 			}
 			var (
 				tWomb User
@@ -995,17 +997,11 @@ var commands = []command{
 			}
 			var ID int64
 			name := cargs[1]
-			if len([]rune(name)) > 64 {
-				_, err := bot.ReplyWithMessage(update.Message.MessageID, "Слишком длинный никнейм", update.Message.Chat.ID)
-				return err
-			} else if !isValidName(name) {
-				_, err := bot.ReplyWithMessage(update.Message.MessageID, "Нелегальное имя", update.Message.Chat.ID)
-				return err
-			} else if rCount, err := users.CountDocuments(
+			if rCount, err := users.CountDocuments(
 				ctx, bson.M{"name": cins(name)}); err != nil {
 				return err
 			} else if rCount == 0 {
-				_, err = bot.ReplyWithMessage(update.Message.MessageID, fmt.Sprintf("Ошибка: вомбата с именем %s не найдено", name), update.Message.Chat.ID)
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Ошибка: вомбата с таким именем не найдено", update.Message.Chat.ID)
 				return err
 			}
 			var tWomb User
@@ -1896,18 +1892,19 @@ var commands = []command{
 	{
 		Name: "support_chat_checker",
 		Is: func(args []string, update tg.Update) bool {
-			return update.Message.Chat.ID == conf.SupChatID && update.Message.ReplyToMessage != nil && update.Message.ReplyToMessage.From.ID == bot.Self.ID
+			return update.Message.Chat.ID == conf.SupChatID && update.Message.ReplyToMessage != nil &&
+				update.Message.ReplyToMessage.From.ID == bot.Self.ID
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
 			omID, err := strconv.ParseInt(strMessID, 10, 64)
 			if err != nil {
-				return err
+				return nil
 			}
 			strPeer := strings.Fields(update.Message.ReplyToMessage.Text)[1]
 			peer, err := strconv.ParseInt(strPeer, 10, 64)
 			if err != nil {
-				return err
+				return nil
 			}
 			if update.Message.From.UserName != "" {
 				_, err = bot.ReplyWithMessage(
@@ -2181,7 +2178,7 @@ var attackCommands = []command{
 			_, err = bot.ReplyWithMessage(
 				update.Message.MessageID,
 				fmt.Sprintf(
-					"Вы отправили вомбата атаковать %s. Ждём ответа!\nОтменить можно командой `атака отмена`",
+					"Вы отправили вомбата атаковать %s. Ждём ответа!\nотозвать можно командой `атака отмена`",
 					tWomb.Name,
 				),
 				update.Message.Chat.ID,
@@ -2925,14 +2922,15 @@ var clanCommands = []command{
 				return err
 			}
 			nclan := Clan{
-				Tag:     strings.ToUpper(tag),
-				Name:    name,
-				Money:   100,
-				Leader:  update.Message.From.ID,
-				Banker:  update.Message.From.ID,
-				Members: []int64{update.Message.From.ID},
-				Banned:  []int64{},
-				GroupID: update.Message.Chat.ID,
+				Tag:          strings.ToUpper(tag),
+				Name:         name,
+				Money:        100,
+				Leader:       update.Message.From.ID,
+				Banker:       update.Message.From.ID,
+				Members:      []int64{update.Message.From.ID},
+				Banned:       []int64{},
+				JoinRequests: []int64{},
+				GroupID:      update.Message.Chat.ID,
 				Settings: ClanSettings{
 					AviableToJoin: true,
 				},
@@ -3032,10 +3030,10 @@ var clanCommands = []command{
 			if err != nil {
 				return err
 			}
-			if len(jClan.Members) >= 7 {
+			if len(jClan.Members) >= 7 && !jClan.Settings.UseRequestsToJoin {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "Ошибка: в клане слишком много игроков :(", update.Message.Chat.ID)
 				return err
-			} else if !(jClan.Settings.AviableToJoin) {
+			} else if !jClan.Settings.AviableToJoin {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "К сожалению, клан закрыт для вступления", update.Message.Chat.ID)
 				return err
 			} else if update.Message.Chat.ID != jClan.GroupID {
@@ -3052,6 +3050,47 @@ var clanCommands = []command{
 					return err
 				}
 			}
+
+			if jClan.Settings.UseRequestsToJoin {
+				for _, id := range jClan.JoinRequests {
+					if id == womb.ID {
+						_, err = bot.ReplyWithMessage(update.Message.MessageID, "Вы уже подали заявку на вступление в этот клан", update.Message.Chat.ID)
+						return err
+					}
+				}
+				_, err := clans.UpdateOne(
+					ctx,
+					bson.M{"_id": jClan.Tag},
+					bson.M{"$push": bson.M{"join_reqs": update.Message.From.ID}},
+				)
+				if err != nil {
+					return err
+				}
+
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы подали заявку на вступление в клан "+jClan.Name+" ["+jClan.Tag+"]. Ждём!",
+					update.Message.Chat.ID,
+				)
+				if err != nil {
+					return err
+				}
+
+				if jClan.JoinRequests == nil {
+					jClan.JoinRequests = []int64{}
+				}
+
+				_, err = bot.SendMessage(
+					fmt.Sprintf(
+						"Подана заявка в Ваш клан от вомбата [%s](%d). Всего заявок: %d",
+						womb.Name, womb.ID, len(jClan.JoinRequests)+1,
+					),
+					jClan.Leader,
+					MarkdownParseModeMessage,
+				)
+				return err
+			}
+
 			womb.Money -= 1000
 			err = docUpd(womb, wombFilter(womb), users)
 			if err != nil {
@@ -3076,7 +3115,97 @@ var clanCommands = []command{
 					womb.Name,
 				),
 				jClan.Leader,
+				MarkdownParseModeMessage,
 			)
+			return err
+		},
+	},
+	{
+		Name: "return_request",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "отозвать"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+			if !isInUsers {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Кланы - приватная территория вомбатов. Вомбата у тебя нет.",
+					update.Message.Chat.ID,
+				)
+				return err
+			} else if len(args) != 3 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Клан отменить: слишком мало или много аргументов! Синтаксис: клан отозвать [тэг клана]",
+					update.Message.Chat.ID,
+				)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"members": update.Message.MessageID}); err != nil {
+				return err
+			} else if rCount != 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Ошибка: вы уже состоите в клане. Напишите `клан выйти`, чтобы выйти из него",
+					update.Message.Chat.ID,
+				)
+				return err
+			} else if rCount, err := clans.CountDocuments(ctx,
+				bson.M{"_id": strings.ToUpper(args[2])}); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					fmt.Sprintf(
+						"Ошибка: клана с тегом `%s` не существует",
+						args[2],
+					),
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+			if rCount, err := clans.CountDocuments(
+				ctx,
+				bson.M{
+					"$and": bson.A{
+						bson.M{"_id": strings.ToUpper(args[2])},
+						bson.M{"join_reqs": update.Message.From.ID},
+					},
+				},
+			); err != nil {
+				return err
+			} else if rCount == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вашей заявки нет в списке активных заявок клана",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			_, err = clans.UpdateOne(
+				ctx,
+				bson.M{"_id": strings.ToUpper(args[2])},
+				bson.M{
+					"$pull": bson.M{
+						"join_reqs": update.Message.From.ID,
+					},
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				"Вы успешно отозвали заявку на вступление в клан `"+strings.ToUpper(args[2])+"`",
+				update.Message.Chat.ID,
+			)
+
 			return err
 		},
 	},
@@ -4114,8 +4243,10 @@ var clanCommands = []command{
 					update.Message.MessageID,
 					fmt.Sprintf(
 						"Настройки клана:\n"+
-							"  доступен_для_входа: %s",
+							"  доступен_для_входа: %s"+
+							"  использовать_заявки_на_вступление: %s",
 						bool2string(sClan.Settings.AviableToJoin),
+						bool2string(sClan.Settings.UseRequestsToJoin),
 					),
 					update.Message.Chat.ID,
 				)
@@ -4142,6 +4273,35 @@ var clanCommands = []command{
 					)
 					return err
 				}
+			case "использовать_заявки_на_вступление":
+				if len(args) == 3 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"использовать_заявки_на_вступление: "+bool2string(sClan.Settings.UseRequestsToJoin),
+						update.Message.Chat.ID,
+					)
+					return err
+				} else if ans := strings.ToLower(args[3]); ans == "да" {
+					sClan.Settings.UseRequestsToJoin = true
+				} else if ans == "нет" {
+					if sClan.JoinRequests != nil && len(sClan.JoinRequests) != 0 {
+						_, err = bot.ReplyWithMessage(
+							update.Message.MessageID,
+							"Нельзя отключить, т.к. ещё есть заявки. Примите их или отмените.",
+							update.Message.Chat.ID,
+						)
+						return err
+					}
+					sClan.Settings.UseRequestsToJoin = false
+				} else {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"Поддерживаются только ответы `да` и `нет`",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+
 			default:
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
@@ -4199,6 +4359,25 @@ var clanCommands = []command{
 				return err
 			}
 			for _, cmd := range clanAttackCommands {
+				if cmd.Is(args, update) {
+					err := cmd.Action(args, update, womb)
+					if err != nil {
+						err = fmt.Errorf("%s: %v", cmd.Name, err)
+					}
+					return err
+				}
+			}
+			_, err := bot.ReplyWithMessage(update.Message.MessageID, "не знаю такой команды", update.Message.Chat.ID)
+			return err
+		},
+	},
+	{
+		Name: "requests",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "заявки"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			for _, cmd := range clanJoinRequestsCommands {
 				if cmd.Is(args, update) {
 					err := cmd.Action(args, update, womb)
 					if err != nil {
@@ -5256,6 +5435,20 @@ var devtoolsCommands = []command{
 				)
 				return err
 			}
+			if c, err := users.CountDocuments(ctx, bson.M{"$and": bson.A{
+				bson.M{"name": cins(args[2])},
+				bson.M{"not": bson.M{"titles": 0}}},
+			}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"такого вомбата либо не существует, либо он уже имеет этот титул",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
 			_, err := users.UpdateOne(ctx, bson.M{"name": cins(args[2])}, bson.M{"$push": bson.M{"titles": 0}})
 			if err != nil {
 				return err
@@ -5264,6 +5457,402 @@ var devtoolsCommands = []command{
 				update.Message.MessageID,
 				"успешно",
 				update.Message.Chat.ID,
+			)
+			return err
+		},
+	},
+}
+
+var clanJoinRequestsCommands = []command{
+	{
+		Name: "list",
+		Is: func(args []string, update tg.Update) bool {
+			return len(args) == 2
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			isInUsers, err := getIsInUsers(update.Message.From.ID)
+			if err != nil {
+				return err
+			}
+
+			if !isInUsers {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Кланы — приватная территория вомбатов. У тебя вомбата нет.",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := clans.CountDocuments(
+				ctx,
+				bson.M{"leader": update.Message.From.ID},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Данная информация доступна только лидеру клана",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var sClan Clan
+
+			err = clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&sClan)
+			if err != nil {
+				return err
+			}
+
+			if !sClan.Settings.UseRequestsToJoin {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Режим заявок на вступление выключен",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var (
+				l    int = len(sClan.JoinRequests)
+				more bool
+			)
+
+			if l == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Заявок на вступление нет",
+					update.Message.Chat.ID,
+				)
+				return err
+			} else if l > 10 {
+				l = 10
+				more = true
+			}
+
+			var builder strings.Builder
+			builder.WriteString("Список заявок:\n")
+
+			var tWomb User
+			for i := 0; i < l; i++ {
+				err = users.FindOne(ctx, bson.M{"_id": sClan.JoinRequests[i]}).Decode(&tWomb)
+				if err != nil {
+					builder.WriteString(" - <ошибка с получением пользователя, ответье командой /admin>\n")
+					continue
+				}
+				builder.WriteString(
+					fmt.Sprintf(
+						" - %s | %d шишей, %d здоровья, %d силы\n",
+						tWomb.Name, tWomb.Money, tWomb.Health, tWomb.Force,
+					),
+				)
+			}
+			if more {
+				builder.WriteString(fmt.Sprintf("...и ещё %d заявок", len(sClan.JoinRequests)-l))
+			}
+
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				builder.String(),
+				update.Message.Chat.ID,
+			)
+
+			return err
+		},
+	},
+	{
+		Name: "accept",
+		Is: func(args []string, update tg.Update) bool {
+			return args[2] == "принять"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) != 4 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Кого принять?",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := clans.CountDocuments(
+				ctx,
+				bson.M{"leader": update.Message.From.ID},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы не являетесь лидером ни в одном клане",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := users.CountDocuments(
+				ctx,
+				bson.M{
+					"name": cins(args[3]),
+				},
+			); err != nil {
+				return err
+			} else if c != 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вомбата с таким ником не найдено",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var (
+				jClan Clan
+				tWomb User
+			)
+
+			err := users.FindOne(ctx, bson.M{"name": cins(args[3])}).Decode(&tWomb)
+			if err != nil {
+				return err
+			}
+
+			if c, err := clans.CountDocuments(
+				ctx,
+				bson.M{
+					"$and": bson.A{
+						bson.M{"leader": update.Message.From.ID},
+						bson.M{"join_reqs": tWomb.ID},
+					},
+				},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Среди заявок Вашего клана нет заявки, поданной вомбатом с указанным ником",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := clans.CountDocuments(
+				ctx,
+				bson.M{
+					"members": tWomb.ID,
+				},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Этот вомбат уже вступил в другой клан",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			err = clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&jClan)
+			if err != nil {
+				return err
+			}
+
+			if len(jClan.Members) >= 7 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"В Вашем клане достигнут максимум участников (7)",
+					update.Message.Chat.ID,
+				)
+				return err
+			} else if tWomb.Money < 1000 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"У вомбата недостаточно денег для вступления (требуется минимум 1000 шишей)",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			_, err = clans.UpdateOne(
+				ctx,
+				bson.M{"_id": jClan.Tag},
+				bson.M{
+					"$push": bson.M{
+						"members": tWomb.ID,
+					},
+					"$pull": bson.M{
+						"join_reqs": tWomb.ID,
+					},
+				},
+			)
+
+			if err != nil {
+				return err
+			}
+
+			_, err = clans.UpdateOne(
+				ctx,
+				bson.M{"join_reqs": tWomb.ID},
+				bson.M{
+					"$pull": bson.M{
+						"join_reqs": tWomb.ID,
+					},
+				},
+			)
+
+			if err != nil {
+				return err
+			}
+
+			_, err = users.UpdateOne(
+				ctx,
+				bson.M{"_id": tWomb.ID},
+				bson.M{"$inc": bson.M{"money": -1000}},
+			)
+
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				"Вомбат "+tWomb.Name+" успешно присоединился к Вашему клану!",
+				update.Message.Chat.ID,
+			)
+
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.SendMessage(
+				"Ваша заявка на вступление в клан `"+jClan.Tag+"` была принята! Другие заявки были автоматически отозваны",
+				tWomb.ID,
+			)
+
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.SendMessage(
+				"Заявка вомбата "+tWomb.Name+" на вступление в клан `"+jClan.Tag+"` была принята",
+				jClan.GroupID,
+			)
+
+			return err
+
+		},
+	},
+	{
+		Name: "discard",
+		Is: func(args []string, update tg.Update) bool {
+			return args[2] == "отклонить"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) > 4 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"слишком много аргументов",
+					update.Message.Chat.ID,
+				)
+				return err
+			} else if len(args) < 4 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"слишком мало аргументов",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := clans.CountDocuments(
+				ctx,
+				bson.M{"leader": update.Message.From.ID},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы не являетесь лидером ни в одном клане",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			if c, err := users.CountDocuments(
+				ctx,
+				bson.M{
+					"name": cins(args[3]),
+				},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вомбата с таким ником не найдено",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var (
+				tWomb User
+				jClan Clan
+			)
+
+			err := users.FindOne(ctx, bson.M{"name": cins(args[3])}).Decode(&tWomb)
+			if err != nil {
+				return err
+			}
+
+			if c, err := clans.CountDocuments(
+				ctx,
+				bson.M{
+					"$and": bson.A{
+						bson.M{"leader": update.Message.From.ID},
+						bson.M{"join_reqs": tWomb.ID},
+					},
+				},
+			); err != nil {
+				return err
+			} else if c == 0 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Среди заявок Вашего клана нет заявки, поданной вомбатом с указанным ником",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			err = clans.FindOne(ctx, bson.M{"leader": update.Message.From.ID}).Decode(&jClan)
+			if err != nil {
+				return err
+			}
+
+			_, err = clans.UpdateOne(
+				ctx,
+				bson.M{"leader": update.Message.From.ID},
+				bson.M{
+					"$pull": bson.M{
+						"join_reqs": tWomb.ID,
+					},
+				},
+			)
+
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				"Заявка успешно отклонена",
+				update.Message.Chat.ID,
+			)
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.SendMessage(
+				"Вашу заявку на вступление в клан `"+jClan.Tag+"` была отклонена",
+				tWomb.ID,
 			)
 			return err
 		},
