@@ -24,12 +24,19 @@ type command struct {
 
 var commands = []command{
 	{
+		Name: "bad_update_check",
+		Is: func(args []string, update tg.Update) bool {
+			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil ||
+				(args == nil || len(args) == 0) && update.Message.NewChatMembers == nil
+		},
+		Action: func([]string, tg.Update, User) error {
+			return nil
+		},
+	},
+	{
 		Name: "greeting_for_new_chat_members",
 		Is: func(args []string, update tg.Update) bool {
-			if update.Message.NewChatMembers != nil && len(update.Message.NewChatMembers) != 0 {
-				return true
-			}
-			return false
+			return update.Message.NewChatMembers != nil && len(update.Message.NewChatMembers) != 0
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 
@@ -52,6 +59,13 @@ var commands = []command{
 				return err
 			}
 			if isInUsers {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					fmt.Sprintf("Добро пожаловать, вомбат `%s`!", womb.Name),
+					update.Message.Chat.ID,
+					MarkdownParseModeMessage,
+				)
+			} else {
 				_, err = bot.ReplyWithMessage(update.Message.MessageID,
 					"Здравствуйте! Я [вомбот](t.me/wombatobot_channel) — бот с вомбатами. "+
 						"Рекомендую Вам завести вомбата, чтобы играть "+
@@ -59,20 +73,8 @@ var commands = []command{
 						"подробнее: /help@wombatobot",
 					update.Message.Chat.ID, MarkdownParseModeMessage, SetWebPagePreview(false),
 				)
-			} else {
-				_, err = bot.ReplyWithMessage(update.Message.MessageID, fmt.Sprintf("Добро пожаловать, вомбат `%s`!", womb.Name), update.Message.Chat.ID)
 			}
 			return err
-		},
-	},
-	{
-		Name: "bad_update_check",
-		Is: func(args []string, update tg.Update) bool {
-			return update.Message == nil || update.Message.Chat == nil || update.Message.From == nil ||
-				args == nil || len(args) == 0
-		},
-		Action: func([]string, tg.Update, User) error {
-			return nil
 		},
 	},
 	{
