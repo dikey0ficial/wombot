@@ -38,6 +38,9 @@ var (
 		StartTime time.Time
 	}{}
 
+	actLaughters             = map[int64]struct{}{}
+	actAttacks, actClattacks = map[string]struct{}{}, map[string]struct{}{}
+
 	bot Bot
 
 	mongoClient                            *mongo.Client

@@ -1520,6 +1520,18 @@ var commands = []command{
 				return err
 			}
 
+			if _, ok := actLaughters[nLghter.ChatID]; ok {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Ржение уже запущено",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			actLaughters[nLghter.ChatID] = struct{}{}
+			defer delete(actLaughters, nLghter.ChatID)
+
 			limgs, ok := Images["laughter"]
 
 			if !ok {
@@ -2312,6 +2324,19 @@ var attackCommands = []command{
 				)
 				return err
 			}
+
+			if _, ok := actAttacks[at.ID]; ok {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Атака уже начата",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			actAttacks[at.ID] = struct{}{}
+			defer delete(actAttacks, at.ID)
+
 			var tWomb User
 			err = users.FindOne(ctx, bson.M{"_id": at.From}).Decode(&tWomb)
 			if err != nil {
@@ -4950,6 +4975,19 @@ var clanAttackCommands = []command{
 				)
 				return err
 			}
+
+			if _, ok := actClattacks[clat.ID]; ok {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Атака уже начата",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			actClattacks[clat.ID] = struct{}{}
+			defer delete(actAttacks, clat.ID)
+
 			var frClan Clan
 			err = clans.FindOne(ctx, bson.M{"_id": clat.From}).Decode(&frClan)
 			if err != nil {
