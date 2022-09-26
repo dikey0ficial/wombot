@@ -5435,6 +5435,54 @@ var devtoolsCommands = []command{
 		},
 	},
 	{
+		Name: "clan_info",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "clan_info"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var sClan Clan
+			if len(args) == 3 {
+				if c, err := clans.CountDocuments(ctx, bson.M{"_id": cins(args[2])}); err != nil {
+					return err
+				} else if c == 0 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"нет такого клана",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+				err := clans.FindOne(ctx, bson.M{"_id": cins(args[2])}).Decode(&sClan)
+				if err != nil {
+					return err
+				}
+			} else {
+				if c, err := clans.CountDocuments(ctx, bson.M{"members": update.Message.From.ID}); err != nil {
+					return err
+				} else if c == 0 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"вы не состоите ни в одном клане",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+				err := clans.FindOne(ctx, bson.M{"members": update.Message.From.ID}).Decode(&sClan)
+				if err != nil {
+					return err
+				}
+			}
+			_, err := bot.ReplyWithMessage(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"%#v", sClan,
+				),
+				update.Message.Chat.ID,
+			)
+			return err
+		},
+	},
+	{
 		Name: "help",
 		Is: func(args []string, update tg.Update) bool {
 			return strings.ToLower(args[1]) == "help"
@@ -5477,6 +5525,54 @@ var devtoolsCommands = []command{
 			}
 
 			_, err := users.UpdateOne(ctx, bson.M{"name": cins(args[2])}, bson.M{"$push": bson.M{"titles": 0}})
+			if err != nil {
+				return err
+			}
+			_, err = bot.ReplyWithMessage(
+				update.Message.MessageID,
+				"успешно",
+				update.Message.Chat.ID,
+			)
+			return err
+		},
+	},
+	{
+		Name: "rickroll",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "rickroll"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if len(args) != 3 {
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"слишком мало или много аргументов",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+			if c, err := users.CountDocuments(ctx, bson.M{"name": cins(args[2])}); err != nil {
+				return err
+			} else if c == 0 {
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"вомбата с таким ником не существует",
+					update.Message.Chat.ID,
+				)
+				return err
+			}
+
+			var sWomb User
+
+			err := users.FindOne(ctx, bson.M{"name": cins(args[2])}).Decode(&sWomb)
+			if err != nil {
+				return err
+			}
+
+			_, err = bot.SendMessage(
+				"[вам сообщение от "+womb.Name+" ](https://youtu.be/watch?v=dQw4w9WgXcQ)",
+				sWomb.ID,
+				MarkdownParseModeMessage, SetWebPagePreview(false),
+			)
 			if err != nil {
 				return err
 			}
