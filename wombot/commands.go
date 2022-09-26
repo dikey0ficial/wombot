@@ -1825,7 +1825,7 @@ var commands = []command{
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "error converting string to int64", update.Message.Chat.ID)
 				return err
 			}
-			_, err = bot.SendMessage(strings.Join(args[2:], " "), int64(to), MarkdownParseModeMessage)
+			_, err = bot.SendMessage(strings.Join(args[2:], " "), int64(to), MarkdownParseModeMessage, SetWebPagePreview(false))
 			if err != nil {
 				return err
 			}
@@ -1856,7 +1856,7 @@ var commands = []command{
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, "error converting #2 string to int64", update.Message.Chat.ID)
 				return err
 			}
-			_, err = bot.ReplyWithMessage(rto, strings.Join(args[3:], " "), int64(sto), MarkdownParseModeMessage)
+			_, err = bot.ReplyWithMessage(rto, strings.Join(args[3:], " "), int64(sto), MarkdownParseModeMessage, SetWebPagePreview(false))
 			if err != nil {
 				return err
 			}
