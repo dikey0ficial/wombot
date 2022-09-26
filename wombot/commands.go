@@ -1920,29 +1920,16 @@ var commands = []command{
 			if err != nil {
 				return nil
 			}
-			if update.Message.From.UserName != "" {
-				_, err = bot.ReplyWithMessage(
-					int(omID),
-					fmt.Sprintf(
-						"Ответ от [админа](t.me/%s): \n%s",
-						update.Message.From.UserName,
-						update.Message.Text,
-					),
-					peer,
-					MarkdownParseModeMessage, SetWebPagePreview(false),
-				)
-			} else {
-				_, err = bot.ReplyWithMessage(
-					int(omID),
-					fmt.Sprintf(
-						"Ответ от админа (для обращений: %d): \n%s",
-						update.Message.From.ID,
-						update.Message.Text,
-					),
-					peer,
-					MarkdownParseModeMessage,
-				)
-			}
+			_, err = bot.ReplyWithMessage(
+				int(omID),
+				fmt.Sprintf(
+					"Ответ от админа (%s): \n%s",
+					update.Message.From.FirstName,
+					update.Message.Text,
+				),
+				peer,
+				MarkdownParseModeMessage,
+			)
 			return err
 		},
 	},
@@ -2062,7 +2049,7 @@ var attackCommands = []command{
 				ID    int64
 				tWomb User
 			)
-			if is, isFrom := isInAttacks(update.Message.From.ID, attacks); isFrom {
+			if is, isFrom := isInAttacks(update.Message.From.ID, attacks); is && isFrom {
 				at, err := getAttackByWomb(update.Message.From.ID, true, attacks)
 				if err != nil {
 					return err
