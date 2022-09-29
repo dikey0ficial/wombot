@@ -2189,8 +2189,9 @@ var attackCommands = []command{
 			}
 			_, err = bot.SendMessage(
 				fmt.Sprintf(
-					"Ужас! Вас атакует %s. Предпримите какие-нибудь меры: отмените атаку (`атака отмена`) или примите (`атака принять`)",
-					womb.Name,
+					"Ужас! Вас атакует %s (%d мощи, %d HP)."+
+						" Предпримите какие-нибудь меры: отмените атаку (`атака отмена`) или примите (`атака принять`)",
+					womb.Name, womb.Force, womb.Health,
 				),
 				tWomb.ID,
 			)
@@ -5476,6 +5477,54 @@ var devtoolsCommands = []command{
 				update.Message.MessageID,
 				fmt.Sprintf(
 					"%#v", sClan,
+				),
+				update.Message.Chat.ID,
+			)
+			return err
+		},
+	},
+	{
+		Name: "laughter_info",
+		Is: func(args []string, update tg.Update) bool {
+			return strings.ToLower(args[1]) == "laughter_info"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			var nLghter Laughter
+			if len(args) == 3 {
+				if c, err := laughters.CountDocuments(ctx, bson.M{"_id": cins(args[2])}); err != nil {
+					return err
+				} else if c == 0 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"нет такого клана",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+				err := laughters.FindOne(ctx, bson.M{"_id": cins(args[2])}).Decode(&nLghter)
+				if err != nil {
+					return err
+				}
+			} else {
+				if c, err := laughters.CountDocuments(ctx, bson.M{"_id": update.Message.Chat.ID}); err != nil {
+					return err
+				} else if c == 0 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"вы не состоите ни в одном клане",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+				err := laughters.FindOne(ctx, bson.M{"_id": update.Message.Chat.ID}).Decode(&nLghter)
+				if err != nil {
+					return err
+				}
+			}
+			_, err := bot.ReplyWithMessage(
+				update.Message.MessageID,
+				fmt.Sprintf(
+					"%#v", nLghter,
 				),
 				update.Message.Chat.ID,
 			)
