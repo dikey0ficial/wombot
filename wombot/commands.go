@@ -1811,7 +1811,7 @@ var commands = []command{
 		Name: "send_msg",
 		Is: func(args []string, update tg.Update) bool {
 			s := strings.ToLower(args[0])
-			return s == "bot.SendMessage" || s == "send_msg"
+			return s == "bot.sendmessage" || s == "send_msg"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if !hasTitle(3, womb.Titles) {
@@ -1834,10 +1834,41 @@ var commands = []command{
 		},
 	},
 	{
+		Name: "edit_msg",
+		Is: func(args []string, update tg.Update) bool {
+			s := strings.ToLower(args[0])
+			return s == "bot.editmessage" || s == "edit_msg"
+		},
+		Action: func(args []string, update tg.Update, womb User) error {
+			if !hasTitle(3, womb.Titles) {
+				return nil
+			} else if len(args) < 4 {
+				_, err := bot.ReplyWithMessage(update.Message.MessageID, "мало аргументов", update.Message.Chat.ID)
+				return err
+			}
+			to, err := strconv.Atoi(args[1])
+			if err != nil {
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "error converting string to int64", update.Message.Chat.ID)
+				return err
+			}
+			id, err := strconv.Atoi(args[2])
+			if err != nil {
+				_, err = bot.ReplyWithMessage(update.Message.MessageID, "error converting string to int64", update.Message.Chat.ID)
+				return err
+			}
+			err = bot.EditMessage(id, strings.Join(args[3:], " "), int64(to), MarkdownParseModeEditText)
+			if err != nil {
+				return err
+			}
+			_, err = bot.ReplyWithMessage(update.Message.MessageID, "Запрос отправлен успешно!", update.Message.Chat.ID)
+			return err
+		},
+	},
+	{
 		Name: "reply_to_msg",
 		Is: func(args []string, update tg.Update) bool {
 			s := strings.ToLower(args[0])
-			return s == "bot.ReplyWithMessage" || s == "reply_to_msg"
+			return s == "bot.replywithmessage" || s == "reply_to_msg"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if !hasTitle(3, womb.Titles) {
@@ -1868,7 +1899,7 @@ var commands = []command{
 		Name: "send_photo",
 		Is: func(args []string, update tg.Update) bool {
 			s := strings.ToLower(args[0])
-			return s == "bot.SendPhoto" || s == "send_photo"
+			return s == "bot.sendphoto" || s == "send_photo"
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
 			if !hasTitle(3, womb.Titles) {
