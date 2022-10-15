@@ -242,7 +242,7 @@ var commands = []command{
 		Name: "support",
 		Is: func(args []string, update tg.Update) bool {
 			txt := strings.ToLower(strings.Join(args, " "))
-			if isPrefixInList(txt, []string{"одмен!", "/admin@" + bot.Self.UserName, "/support@" + bot.Self.UserName, "/bug@" + bot.Self.UserName}) {
+			if isPrefixInList(txt, []string{"одмен!", "/admin", "/admin@" + bot.Self.UserName, "/support@" + bot.Self.UserName, "/bug@" + bot.Self.UserName}) {
 				return true
 			} else if !isGroup(update.Message) && isPrefixInList(txt, []string{"/admin", "/support", "/bug", "/админ", "/сап", "/саппорт", "/баг"}) {
 				return true
