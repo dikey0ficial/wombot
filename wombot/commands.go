@@ -3076,7 +3076,7 @@ var clanCommands = []command{
 				)
 				return err
 			} else if rCount, err := clans.CountDocuments(ctx,
-				bson.M{"members": update.Message.MessageID}); err != nil {
+				bson.M{"members": update.Message.From.ID}); err != nil {
 				return err
 			} else if rCount != 0 {
 				_, err = bot.ReplyWithMessage(
