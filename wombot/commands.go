@@ -819,6 +819,29 @@ var commands = []command{
 					)
 					return err
 				}
+
+			case "money":
+				fallthrough
+			case "денег":
+				fallthrough
+			case "деняк":
+				fallthrough
+			case "деньги":
+				if womb.Money < 5 {
+					_, err = bot.ReplyWithMessage(
+						update.Message.MessageID,
+						"У тебя недостаточно денег, чтобы купить деньги",
+						update.Message.Chat.ID,
+					)
+					return err
+				}
+
+				_, err = bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"Вы купил(и) 5 денег за 5 шишей.",
+					update.Message.Chat.ID,
+				)
+				return err
 			default:
 				_, err = bot.ReplyWithMessage(update.Message.MessageID, fmt.Sprintf("Что такое %s?", args[1]), update.Message.Chat.ID)
 				return err
