@@ -1794,8 +1794,14 @@ var commands = []command{
 				msgB.WriteString(fmt.Sprintf(" — Версия: %s\n", StatusInfo.Version))
 			}
 
-			msgB.WriteString(fmt.Sprintf(" — Аптайм: %s\n", time.Now().Sub(StatusInfo.StartTime)))
+			{
+				diff := time.Now().Sub(StatusInfo.StartTime)
+				msgB.WriteString(fmt.Sprintf(" — Аптайм: %dч %dм %dс\n", int(diff.Hours()), int(diff.Minutes()), int(diff.Seconds())))
+			}
+
 			msgB.WriteString(fmt.Sprintf(" — Горутин запущено: %d\n", runtime.NumGoroutine()))
+			msgB.WriteString(fmt.Sprintf(" — Сообщений получено: %d\n", gotMessages))
+			msgB.WriteString(fmt.Sprintf(" — Сообщений обработано: %d\n", processedMessages))
 
 			_, err := bot.ReplyWithMessage(
 				update.Message.MessageID,

@@ -47,6 +47,8 @@ var (
 	db                                     *mongo.Database
 	users, attacks, bank, clans, clattacks *mongo.Collection
 	laughters                              *mongo.Collection
+
+	gotMessages, processedMessages int // because yes.
 )
 
 func init() {
@@ -160,6 +162,7 @@ SELECTFOR:
 				}()
 
 				if update.Message != nil {
+					gotMessages++
 					args = strings.Fields(update.Message.Text)
 					if update.Message.Text == "" {
 						args = strings.Fields(update.Message.Caption)
@@ -175,6 +178,7 @@ SELECTFOR:
 				for _, cmd := range commands {
 					cmdName = "[check] " + cmd.Name
 					if cmd.Is(args, update) {
+						processedMessages++
 						cmdName = cmd.Name
 
 						if conf.LogLevel == 1 && update.Message != nil {
