@@ -1941,6 +1941,10 @@ var commands = []command{
 				update.Message.ReplyToMessage.From.ID == bot.Self.ID
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
+			if update.Message.ReplyToMessage.Text == "" {
+				return nil
+			}
+
 			strMessID := strings.Fields(update.Message.ReplyToMessage.Text)[0]
 			omID, err := strconv.ParseInt(strMessID, 10, 64)
 			if err != nil {
