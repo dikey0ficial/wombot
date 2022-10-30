@@ -1820,7 +1820,7 @@ var commands = []command{
 
 			{
 				diff := time.Now().Sub(StatusInfo.StartTime)
-				msgB.WriteString(fmt.Sprintf(" — Аптайм: %dч %dм %dс\n", int(diff.Hours()), int(diff.Minutes()), int(diff.Seconds())))
+				msgB.WriteString(fmt.Sprintf(" — Аптайм: %dч %dм %dс\n", int(diff.Hours()), int(diff.Minutes()%60), int(diff.Seconds()%60)))
 			}
 
 			msgB.WriteString(fmt.Sprintf(" — Горутин запущено: %d\n", runtime.NumGoroutine()))
