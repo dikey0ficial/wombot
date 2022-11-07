@@ -338,17 +338,14 @@ var commands = []command{
 			)
 		},
 		Action: func(args []string, update tg.Update, womb User) error {
-			if isGroup(update.Message) {
-				_, err := bot.ReplyWithMessage(update.Message.MessageID, "данная команда работает (мб только пока) только в лс)", update.Message.Chat.ID)
-				return err
-			}
 			isInUsers, err := getIsInUsers(update.Message.From.ID)
 			if err != nil {
 				return err
 			}
 			if isInUsers {
-				_, err := bot.ReplyWithMessage(update.Message.MessageID,
-					"У тебя как бы уже есть вомбат лолкек. Если хочешь от него избавиться, то напиши `приготовить шашлык`",
+				_, err := bot.ReplyWithMessage(
+					update.Message.MessageID,
+					"У тебя как бы уже есть вомбат. Если хочешь от него избавиться, то напиши `приготовить шашлык`",
 					update.Message.Chat.ID,
 				)
 				return err
@@ -372,7 +369,8 @@ var commands = []command{
 			if !ok {
 				return ErrNoImgs
 			}
-			_, err = bot.ReplyWithPhoto(update.Message.MessageID,
+			_, err = bot.ReplyWithPhoto(
+				update.Message.MessageID,
 				randImg(newimg), fmt.Sprintf(
 					"Поздравляю, у тебя появился вомбат! Ему выдалось имя `%s`. Ты можешь поменять имя командой `Поменять имя [имя]` за 3 монеты",
 					newWomb.Name),
