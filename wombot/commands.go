@@ -2185,7 +2185,7 @@ var attackCommands = []command{
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
 					fmt.Sprintf(
-						"Вомбат %s спит. Его атаковать не получится",
+						"Вомбат `%s` спит. Его атаковать не получится",
 						tWomb.Name,
 					),
 					update.Message.Chat.ID,
@@ -2203,7 +2203,7 @@ var attackCommands = []command{
 				}
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID, fmt.Sprintf(
-						"%s уже атакует вомбата %s. Попросите %s решить данную проблему",
+						"`%s` уже атакует вомбата `%s`. Попросите `%s` решить данную проблему",
 						strID, aWomb.Name, strID,
 					),
 					update.Message.Chat.ID,
@@ -2223,10 +2223,11 @@ var attackCommands = []command{
 				_, err = bot.ReplyWithMessage(
 					update.Message.MessageID,
 					fmt.Sprintf(
-						"Вомбат %s уже атакуется %s. Попросите %s решить данную проблему",
+						"Вомбат `%s` уже атакуется `%s`. Попросите ``%s` решить данную проблему",
 						strID, aWomb.Name, strID,
 					),
 					update.Message.Chat.ID,
+					MarkdownParseModeMessage,
 				)
 				return err
 			}
@@ -2242,7 +2243,7 @@ var attackCommands = []command{
 			_, err = bot.ReplyWithMessage(
 				update.Message.MessageID,
 				fmt.Sprintf(
-					"Вы отправили вомбата атаковать %s. Ждём ответа!\nотозвать можно командой `атака отмена`",
+					"Вы отправили вомбата атаковать `%s`. Ждём ответа!\nотозвать можно командой `атака отмена`",
 					tWomb.Name,
 				),
 				update.Message.Chat.ID,
@@ -2252,7 +2253,7 @@ var attackCommands = []command{
 			}
 			_, err = bot.SendMessage(
 				fmt.Sprintf(
-					"Ужас! Вас атакует %s (%d мощи, %d HP)."+
+					"Ужас! Вас атакует `%s` (%d мощи, %d HP)."+
 						" Предпримите какие-нибудь меры: отмените атаку (`атака отмена`) или примите (`атака принять`)",
 					womb.Name, womb.Force, womb.Health,
 				),
